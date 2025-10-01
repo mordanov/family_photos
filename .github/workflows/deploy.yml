@@ -1,0 +1,82 @@
+name: Deploy Image Application and Authorization Service
+
+on:
+  push:
+    branches:
+      - main  # Trigger workflow on push to the main branch
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout Repository Code
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Authenticate to Docker Hub (optional) or ECR
+      - name: Login to Docker Hub
+        if: ${{ secrets.DOCKER_USERNAME && secrets.DOCKER_PASSWORD }}
+        run: |
+          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      - name: AWS ECR Login
+        if: ${{ secrets.AWS_ACCESS_KEY_ID && secrets.AWS_SECRET_ACCESS_KEY && secrets.AWS_REGION }}
+        run: |
+          aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws configure set region ${{ secrets.AWS_REGION }}
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin "${{ secrets.AWS_ACCOUNT_ID }}".dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+
+      # Build Images
+      - name: Build auth-service Docker image
+        run: |
+          docker build -t auth-service ./auth
+
+      - name: Build image-app Docker image
+        run: |
+          docker build -t image-app ./image
+
+      # Tag and Push Images
+      - name: Tag and Push auth-service Docker image
+        run: |
+          docker tag auth-service:latest "${{ secrets.DOCKER_USERNAME || secrets.AWS_ACCOUNT_ID }}"/auth-service:latest
+          docker push "${{ secrets.DOCKER_USERNAME || secrets.AWS_ACCOUNT_ID }}"/auth-service:latest
+
+      - name: Tag and Push image-app Docker image
+        run: |
+          docker tag image-app:latest "${{ secrets.DOCKER_USERNAME || secrets.AWS_ACCOUNT_ID }}"/image-app:latest
+          docker push "${{ secrets.DOCKER_USERNAME || secrets.AWS_ACCOUNT_ID }}"/image-app:latest
+
+  deploy:
+    name: Deploy on Target Server
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout Repository Code
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Deploy via SSH
+      - name: Copy Docker Compose file to server
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          source: docker-compose.yml
+          target: /home/${{ secrets.SSH_USERNAME }}/docker-compose.yml
+
+      - name: SSH to server and deploy with docker-compose
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd /home/${{ secrets.SSH_USERNAME }}
+            docker-compose down
+            docker-compose pull
+            docker-compose up -d
