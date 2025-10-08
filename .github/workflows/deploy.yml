@@ -15,24 +15,30 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Login to Docker Hub
-        if: ${{ secrets.DOCKER_USERNAME && secrets.DOCKER_PASSWORD }}
         run: |
-          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+          if [ -n "${{ secrets.DOCKER_USERNAME }}" ] && [ -n "${{ secrets.DOCKER_PASSWORD }}" ]; then
+            echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin;
+          else
+            echo "Skipping Docker Hub login because secrets are not set.";
+          fi
 
       - name: AWS ECR Login
-        if: ${{ secrets.AWS_ACCESS_KEY_ID && secrets.AWS_SECRET_ACCESS_KEY && secrets.AWS_REGION }}
         run: |
-          aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws configure set region ${{ secrets.AWS_REGION }}
-          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin "${{ secrets.AWS_ACCOUNT_ID }}".dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+          if [ -n "${{ secrets.AWS_ACCESS_KEY_ID }}" ] && [ -n "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ] && [ -n "${{ secrets.AWS_REGION }}" ]; then
+            aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }};
+            aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }};
+            aws configure set region ${{ secrets.AWS_REGION }};
+            aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com";
+          else
+            echo "Skipping AWS ECR login because secrets are not set.";
+          fi
 
       - name: Set Repository Tag Prefix
         run: |
           if [ -n "${{ secrets.DOCKER_USERNAME }}" ]; then
-            echo "REPO_PREFIX=${{ secrets.DOCKER_USERNAME }}" >> $GITHUB_ENV
+            echo "REPO_PREFIX=${{ secrets.DOCKER_USERNAME }}" >> $GITHUB_ENV;
           elif [ -n "${{ secrets.AWS_ACCOUNT_ID }}" ]; then
-            echo "REPO_PREFIX=${{ secrets.AWS_ACCOUNT_ID }}" >> $GITHUB_ENV
+            echo "REPO_PREFIX=${{ secrets.AWS_ACCOUNT_ID }}" >> $GITHUB_ENV;
           fi
 
       - name: Build auth-service Docker image
@@ -40,16 +46,16 @@ jobs:
 
       - name: Tag and Push auth-service Docker image
         run: |
-          docker tag auth-service:latest "${{ env.REPO_PREFIX }}/auth-service:latest"
-          docker push "${{ env.REPO_PREFIX }}/auth-service:latest"
+          docker tag auth-service:latest "${{ env.REPO_PREFIX }}/auth-service:latest";
+          docker push "${{ env.REPO_PREFIX }}/auth-service:latest";
 
       - name: Build image-app Docker image
         run: docker build -t image-app ./image
 
       - name: Tag and Push image-app Docker image
         run: |
-          docker tag image-app:latest "${{ env.REPO_PREFIX }}/image-app:latest"
-          docker push "${{ env.REPO_PREFIX }}/image-app:latest"
+          docker tag image-app:latest "${{ env.REPO_PREFIX }}/image-app:latest";
+          docker push "${{ env.REPO_PREFIX }}/image-app:latest";
 
   deploy:
     name: Deploy on Target Server
