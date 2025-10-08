@@ -11,43 +11,45 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout Repository Code
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Authenticate to Docker Hub (optional) or ECR
       - name: Login to Docker Hub
-        if: ${{ secrets.DOCKER_USERNAME != '' && secrets.DOCKER_PASSWORD != '' }}
+        if: ${{ secrets.DOCKER_USERNAME && secrets.DOCKER_PASSWORD }}
         run: |
           echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
       - name: AWS ECR Login
-        if: ${{ secrets.AWS_ACCESS_KEY_ID != '' && secrets.AWS_SECRET_ACCESS_KEY != '' && secrets.AWS_REGION != '' }}
+        if: ${{ secrets.AWS_ACCESS_KEY_ID && secrets.AWS_SECRET_ACCESS_KEY && secrets.AWS_REGION }}
         run: |
           aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws configure set region ${{ secrets.AWS_REGION }}
           aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin "${{ secrets.AWS_ACCOUNT_ID }}".dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
 
-      # Build Images
+      - name: Set Repository Tag Prefix
+        run: |
+          if [ -n "${{ secrets.DOCKER_USERNAME }}" ]; then
+            echo "REPO_PREFIX=${{ secrets.DOCKER_USERNAME }}" >> $GITHUB_ENV
+          elif [ -n "${{ secrets.AWS_ACCOUNT_ID }}" ]; then
+            echo "REPO_PREFIX=${{ secrets.AWS_ACCOUNT_ID }}" >> $GITHUB_ENV
+          fi
+
       - name: Build auth-service Docker image
-        run: |
-          docker build -t auth-service ./auth
+        run: docker build -t auth-service ./auth
 
-      - name: Build image-app Docker image
-        run: |
-          docker build -t image-app ./image
-
-      # Tag and Push Images
       - name: Tag and Push auth-service Docker image
         run: |
-          docker tag auth-service:latest "${{ secrets.DOCKER_USERNAME || secrets.AWS_ACCOUNT_ID }}"/auth-service:latest
-          docker push "${{ secrets.DOCKER_USERNAME || secrets.AWS_ACCOUNT_ID }}"/auth-service:latest
+          docker tag auth-service:latest "${{ env.REPO_PREFIX }}/auth-service:latest"
+          docker push "${{ env.REPO_PREFIX }}/auth-service:latest"
+
+      - name: Build image-app Docker image
+        run: docker build -t image-app ./image
 
       - name: Tag and Push image-app Docker image
         run: |
-          docker tag image-app:latest "${{ secrets.DOCKER_USERNAME || secrets.AWS_ACCOUNT_ID }}"/image-app:latest
-          docker push "${{ secrets.DOCKER_USERNAME || secrets.AWS_ACCOUNT_ID }}"/image-app:latest
+          docker tag image-app:latest "${{ env.REPO_PREFIX }}/image-app:latest"
+          docker push "${{ env.REPO_PREFIX }}/image-app:latest"
 
   deploy:
     name: Deploy on Target Server
@@ -55,11 +57,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout Repository Code
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Deploy via SSH
       - name: Copy Docker Compose file to server
         uses: appleboy/scp-action@v0.1.4
         with:
