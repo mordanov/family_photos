@@ -1,4 +1,5 @@
-import sqlite3
+import os
+import psycopg2
 import jwt
 import datetime
 from flask import Flask, request, jsonify
@@ -8,20 +9,51 @@ from google.oauth2 import id_token
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "super-secret-key"
 
+# Get PostgreSQL credentials from environment variables
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "db-service")  # Default to Docker service name
+POSTGRES_USER = os.getenv("POSTGRES_USER", "pguser")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "password")  # Secure value expected
+POSTGRES_DB = os.getenv("POSTGRES_DB", "auth_db")
 
-# Initialize SQLite Database
+
+# Utility function: Get a PostgreSQL connection
+def get_db_connection():
+    try:
+        return psycopg2.connect(
+            host=POSTGRES_HOST,
+            database=POSTGRES_DB,
+            user=POSTGRES_USER,
+            password=POSTGRES_PASSWORD
+        )
+    except psycopg2.Error as e:
+        print(f"Error connecting to PostgreSQL: {e}")
+        raise
+
+
+# Initialize PostgreSQL Database
 def init_db():
-    with sqlite3.connect("auth.db") as conn:
-        cursor = conn.cursor()
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        # Create users table if it doesn't exist
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 email TEXT UNIQUE NOT NULL
             )
             """
         )
-        conn.commit()
+        connection.commit()
+
+        print("Database initialized successfully.")
+    except psycopg2.Error as e:
+        print(f"Database initialization error: {e}")
+    finally:
+        if connection:
+            cursor.close()
+            connection.close()
 
 
 @app.route("/login", methods=["GET"])
@@ -37,10 +69,15 @@ def login():
         email = idinfo["email"]
 
         # Check if the user is on the authorized list
-        with sqlite3.connect("auth.db") as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT email FROM users WHERE email = ?", (email,))
+        try:
+            connection = get_db_connection()
+            cursor = connection.cursor()
+            cursor.execute("SELECT email FROM users WHERE email = %s", (email,))
             user = cursor.fetchone()
+        finally:
+            if connection:
+                cursor.close()
+                connection.close()
 
         if not user:
             return jsonify({"error": "Unauthorized user"}), 403
@@ -48,7 +85,7 @@ def login():
         # Generate JWT
         payload = {
             "email": email,
-            "exp": datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1),
+            "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1),
         }
         token = jwt.encode(payload, app.config["SECRET_KEY"], algorithm="HS256")
 
@@ -89,15 +126,23 @@ def add_user():
     email = data["email"]
 
     try:
-        with sqlite3.connect("auth.db") as conn:
-            cursor = conn.cursor()
-            cursor.execute("INSERT INTO users (email) VALUES (?)", (email,))
-            conn.commit()
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        cursor.execute("INSERT INTO users (email) VALUES (%s)", (email,))
+        connection.commit()
 
         return jsonify({"message": f"User {email} added successfully."})
 
-    except sqlite3.IntegrityError:
+    except psycopg2.IntegrityError:
         return jsonify({"error": f"User {email} is already authorized."}), 400
+
+    except psycopg2.Error as e:
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        if connection:
+            cursor.close()
+            connection.close()
 
 
 if __name__ == "__main__":
