@@ -2,15 +2,12 @@ import os
 import requests
 import boto3
 import streamlit as st
-from botocore.exceptions import NoCredentialsError
-from PIL import Image
-import io
 
 # AWS S3 Configuration
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
-AWS_REGION = "your-region"
-BUCKET_NAME = "your-bucket-name"
+AWS_REGION = os.getenv("AWS_REGION")
+BUCKET_NAME = "photo-mordanov"
 
 AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:5000/validate-token")  # Auth service within Docker Compose
 
@@ -22,10 +19,10 @@ s3_client = boto3.client(
     region_name=AWS_REGION,
 )
 
-
 # Middleware: Validate Token from Auth Service
 def validate_token():
-    auth_header = st.experimental_get_query_params().get("Authorization", [None])[0]
+    # Update to use the new st.query_params method
+    auth_header = st.query_params.get("Authorization", [None])[0]
     if not auth_header:
         st.error("Unauthorized: Missing Authorization header.")
         st.stop()

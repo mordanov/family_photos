@@ -10,6 +10,11 @@ services:
       - auth-db:/data
     environment:
       - FLASK_ENV=development
+      - POSTGRES_PASSWORD=${PG_PASSWORD}
+      - POSTGRES_HOST=db-service
+      - POSTGRES_DB=auth_db
+    depends_on:
+      - db-service
 
   image-app:
     build:
@@ -20,6 +25,25 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AUTH_SERVICE_URL=http://auth-service:5000
+      - POSTGRES_USER=${PG_USER}
+      - POSTGRES_PASSWORD=${PG_PASSWORD}
+      - POSTGRES_HOST=db-service
+      - POSTGRES_DB=auth_db
+    depends_on:
+      - db-service
+
+  db-service:
+    image: postgres:15
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${PG_USER}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_DB: auth_db
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
 
 volumes:
   auth-db:
+  postgres-data:
