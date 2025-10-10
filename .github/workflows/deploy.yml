@@ -42,16 +42,16 @@ jobs:
 
       - name: Tag and Push auth-service Docker image
         run: |
-          docker tag auth-service:latest "${{ env.REPO_PREFIX }}/auth-service:latest";
-          docker push "${{ env.REPO_PREFIX }}/auth-service:latest";
+          docker tag auth-service:latest "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/auth-service:latest";
+          docker push "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/auth-service:latest";
 
       - name: Build image-app Docker image
         run: docker build -t image-app ./image
 
       - name: Tag and Push image-app Docker image
         run: |
-          docker tag image-app:latest "${{ env.REPO_PREFIX }}/image-app:latest";
-          docker push "${{ env.REPO_PREFIX }}/image-app:latest";
+          docker tag image-app:latest "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/image-app:latest";
+          docker push "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/image-app:latest";
 
   deploy:
     name: Deploy on Target Server
