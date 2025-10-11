@@ -1,0 +1,49 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Infrastructure for Family Photos project
+
+Parameters:
+  Environment:
+    Type: String
+    Description: "The environment (e.g., Production, Staging, Development)"
+    AllowedValues:
+      - Production
+      - Staging
+      - Development
+    Default: Production
+
+Resources:
+  AuthServiceECRRepository:
+    Type: "AWS::ECR::Repository"
+    Properties:
+      RepositoryName: "auth-service"
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      Tags:
+        - Key: "Environment"
+          Value: !Ref Environment
+        - Key: "Application"
+          Value: "AuthService"
+
+  ImageAppECRRepository:
+    Type: "AWS::ECR::Repository"
+    Properties:
+      RepositoryName: "image-app"
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      Tags:
+        - Key: "Environment"
+          Value: !Ref Environment
+        - Key: "Application"
+          Value: "ImageApp"
+
+Outputs:
+  AuthServiceECRRepositoryURI:
+    Description: "URI of Auth Service"
+    Value: !GetAtt AuthServiceECRRepository.RepositoryUri
+    Export:
+      Name: "AuthServiceECRRepositoryURI"
+  ImageAppECRRepositoryURI:
+    Description: "URI of the Image Service"
+    Value: !GetAtt ImageAppECRRepository.RepositoryUri
+    Export:
+      Name: "ImageAppECRRepositoryURI"
