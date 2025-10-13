@@ -124,26 +124,23 @@ get_github_repo_public_key() {
 encrypt_secret() {
   local secret_value=$1
 
-  # Decode the Base64 public key from GitHub and save it as a DER file
+  # Decode and save the GitHub-provided Base64 public key as DER
   echo "$PUBLIC_KEY" | base64 -d > /tmp/github_public_key.der
 
-  # Convert the DER-formatted public key into PEM format
-  openssl rsa -pubin -inform DER -in /tmp/github_public_key.der -out /tmp/github_public_key.pem 2>/dev/null
-
-  # Ensure the PEM file exists and is valid
-  if [[ ! -f /tmp/github_public_key.pem ]] || ! openssl pkey -pubin -in /tmp/github_public_key.pem -text >/dev/null 2>&1; then
-    echo "Error: Invalid public key format or failed to decode public key."
+  # Validate that the public key file is correctly formatted
+  if [[ ! -s /tmp/github_public_key.der ]]; then
+    echo "Error: Failed to decode the GitHub public key or the key is empty."
     rm -f /tmp/github_public_key.der
     exit 1
   fi
 
-  # Encrypt the secret using `pkeyutl` and output the result in Base64
+  # Encrypt the secret using the DER-encoded public key
   local encrypted_value=$(echo -n "$secret_value" | \
-    openssl pkeyutl -encrypt -pubin -inkey /tmp/github_public_key.pem | \
+    openssl pkeyutl -encrypt -pubin -inkey /tmp/github_public_key.der -keyform DER | \
     base64 -w0)
 
-  # Clean up temporary files
-  rm -f /tmp/github_public_key.der /tmp/github_public_key.pem
+  # Clean up the temporary DER file
+  rm -f /tmp/github_public_key.der
 
   if [[ -z "$encrypted_value" ]]; then
     echo "Error: Failed to encrypt secret value."
