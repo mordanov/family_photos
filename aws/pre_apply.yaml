@@ -1,0 +1,79 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Pre-requisites for Family Photos projects
+
+Resources:
+
+  FamilyPhotosServiceGroup:
+    Type: "AWS::IAM::Group"
+    Properties:
+      GroupName: "FamilyPhotosServiceGroup"
+
+  FamilyUser:
+    Type: "AWS::IAM::User"
+    Properties:
+      UserName: "family_user"
+      Tags:
+        - Key: "Application"
+          Value: "FamilyPhotosService"
+
+  FamilyPhotosServiceGroupMembership:
+    Type: "AWS::IAM::UserToGroupAddition"
+    Properties:
+      GroupName: "FamilyPhotosServiceGroup"
+      Users:
+        - !Ref FamilyUser
+
+  GitHubActionsPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: "GitHubActionsPolicy"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          # ECR Permissions
+          - Effect: "Allow"
+            Action:
+              - "ecr:GetAuthorizationToken"        # Authenticate to ECR
+              - "ecr:BatchCheckLayerAvailability"  # Verify Docker layer availability
+              - "ecr:CompleteLayerUpload"          # Complete layer upload
+              - "ecr:UploadLayerPart"              # Upload Docker layers
+              - "ecr:PutImage"                     # Push Docker images
+              - "ecr:ListImages"                   # List images in a repository
+              - "ecr:DescribeRepositories"         # Describe repositories
+              - "ecr:CreateRepository"             # Create new ECR repositories
+              - "ecr:DeleteRepository"             # Delete repositories
+              - "ecr:DeleteRepositoryPolicy"       # Delete repository policies
+              - "ecr:SetRepositoryPolicy"          # Set repository policies
+              - "ecr:GetRepositoryPolicy"          # Get repository policies
+              - "ecr:TagResource"                  # Tag repository resources
+              - "ecr:UntagResource"                # Untag repository resources
+              - "ecr:BatchDeleteImage"             # Delete images
+            Resource: "*" # Replace with specific resource ARNs for tighter security
+
+          # CloudFormation Permissions
+          - Effect: "Allow"
+            Action:
+              - "cloudformation:CreateStack"       # Create CloudFormation stacks
+              - "cloudformation:DeleteStack"       # Delete CloudFormation stacks
+              - "cloudformation:UpdateStack"       # Update existing stacks
+              - "cloudformation:DescribeStacks"    # View stack status and details
+              - "cloudformation:ListStackResources" # List resources in stacks
+              - "cloudformation:TagResource"       # Tag stacks
+              - "cloudformation:UntagResource"     # Untag stacks
+              - "cloudformation:GetTemplate"       # Retrieve stack templates
+              - "cloudformation:ValidateTemplate"  # Validate CloudFormation templates
+            Resource: "*" # Replace with specific resource ARNs for tighter security
+
+      # Attach the Policy to the Group
+      Groups:
+        - !Ref FamilyPhotosServiceGroup
+
+Outputs:
+  IAMGroupName:
+    Description: "Name of the IAM Group created"
+    Value: !Ref FamilyPhotosServiceGroup
+
+  IAMUserName:
+    Description: "Name of the IAM User created"
+    Value: !Ref FamilyUser
+
