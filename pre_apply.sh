@@ -142,22 +142,27 @@ get_github_repo_public_key() {
 encrypt_secret() {
   local secret_value=$1
 
+  # Decode and save the GitHub-provided Base64 public key as DER
   echo "$PUBLIC_KEY" | base64 -d > /tmp/github_public_key.der
 
+  # Validate that the DER file exists and matches GitHub-provided format
   if [[ ! -s /tmp/github_public_key.der ]]; then
-    echo "Error: Failed to decode the GitHub public key or the key is empty."
+    echo "Error: Failed to decode the GitHub public key or the file is empty."
     exit 1
   fi
 
+  # Use OpenSSL's `pkeyutl` for RSA encryption with the GitHub public key
   local encrypted_value=$(echo -n "$secret_value" | \
-    openssl pkeyutl -encrypt -pubin -inkey /tmp/github_public_key.der -keyform DER | \
+    openssl pkeyutl -encrypt -pubin -inkey /tmp/github_public_key.der -keyform DER 2>/dev/null | \
     base64 -w0)
 
+  # If encryption fails, log and exit
   if [[ -z "$encrypted_value" ]]; then
-    echo "Error: Failed to encrypt secret value."
+    echo "Error: Failed to encrypt secret value. The public key may be invalid or improperly formatted."
     exit 1
   fi
 
+  # Return the encrypted value
   echo "$encrypted_value"
 }
 
