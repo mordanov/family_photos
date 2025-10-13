@@ -32,6 +32,11 @@ DEPLOY_PRE_APPLY=false                   # Initialize flag for CloudFormation de
 
 PRE_APPLY_SCRIPT="./aws/pre_apply.yaml"  # Path to the CloudFormation script
 
+# ==== Error Handling ====
+set -e                                   # Exit immediately on any error
+trap 'echo "An unexpected error occurred. Exiting." >&2' ERR
+trap 'rm -f /tmp/github_public_key.der' EXIT   # Ensure cleanup of temporary files
+
 # ==== Parse Command-Line Arguments ====
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -79,6 +84,11 @@ if [[ -z "$GH_TOKEN" ]]; then
   exit 1
 fi
 
+if [[ -z "$GITHUB_OWNER" || -z "$REPOSITORY_NAME" ]]; then
+  echo "Error: Repository owner and name must be provided."
+  exit 1
+fi
+
 # ==== Function to Deploy CloudFormation Script ====
 deploy_cloudformation() {
   echo "Deploying CloudFormation script from '$PRE_APPLY_SCRIPT'..."
@@ -87,6 +97,11 @@ deploy_cloudformation() {
     exit 1
   fi
 
+  aws sts get-caller-identity --profile "$AWS_PROFILE" >/dev/null 2>&1 || {
+    echo "Error: AWS credentials are not configured for profile '$AWS_PROFILE'."
+    exit 1
+  }
+
   aws cloudformation deploy \
     --template-file "$PRE_APPLY_SCRIPT" \
     --stack-name pre-apply-stack \
@@ -94,53 +109,49 @@ deploy_cloudformation() {
     --profile "$AWS_PROFILE" \
     --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM
 
-  if [[ $? -ne 0 ]]; then
-    echo "Error: Failed to deploy CloudFormation script."
-    exit 1
-  fi
-
   echo "CloudFormation script deployed successfully."
 }
 
 # ==== Function to Fetch GitHub Repository Public Key ====
 get_github_repo_public_key() {
   echo "Fetching GitHub repository public key..."
+
   local API_URL="https://api.github.com/repos/${GITHUB_OWNER}/${REPOSITORY_NAME}/actions/secrets/public-key"
+  local retries=3
 
-  local response=$(curl -s -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.v3+json" "$API_URL")
+  for i in $(seq 1 $retries); do
+    local response=$(curl -s -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.v3+json" "$API_URL")
 
-  PUBLIC_KEY=$(echo "$response" | jq -r '.key')
-  KEY_ID=$(echo "$response" | jq -r '.key_id')
+    PUBLIC_KEY=$(echo "$response" | jq -r '.key')
+    KEY_ID=$(echo "$response" | jq -r '.key_id')
 
-  if [[ -z "$PUBLIC_KEY" || -z "$KEY_ID" ]]; then
-    echo "Error: Failed to retrieve GitHub repository public key. Response: $response"
-    exit 1
-  fi
+    if [[ -n "$PUBLIC_KEY" && -n "$KEY_ID" ]]; then
+      echo "Public key and key ID successfully retrieved."
+      return
+    fi
 
-  echo "Public key and key ID fetched successfully."
+    echo "Failed to fetch public key (attempt $i/$retries). Retrying..."
+    sleep 5
+  done
+
+  echo "Error: Failed to retrieve GitHub public key after $retries attempts. Response: $response"
+  exit 1
 }
 
 # ==== Function to Encrypt Secret ====
 encrypt_secret() {
   local secret_value=$1
 
-  # Decode and save the GitHub-provided Base64 public key as DER
   echo "$PUBLIC_KEY" | base64 -d > /tmp/github_public_key.der
 
-  # Validate that the public key file is correctly formatted
   if [[ ! -s /tmp/github_public_key.der ]]; then
     echo "Error: Failed to decode the GitHub public key or the key is empty."
-    rm -f /tmp/github_public_key.der
     exit 1
   fi
 
-  # Encrypt the secret using the DER-encoded public key
   local encrypted_value=$(echo -n "$secret_value" | \
     openssl pkeyutl -encrypt -pubin -inkey /tmp/github_public_key.der -keyform DER | \
     base64 -w0)
-
-  # Clean up the temporary DER file
-  rm -f /tmp/github_public_key.der
 
   if [[ -z "$encrypted_value" ]]; then
     echo "Error: Failed to encrypt secret value."
@@ -154,41 +165,45 @@ encrypt_secret() {
 push_github_secret() {
   local secret_name=$1
   local secret_value=$2
-
-  # Encrypt the secret value using the repository's public key
-  local encrypted_value=$(encrypt_secret "$secret_value")
-
-  # API URL for creating/updating GitHub Actions secrets
+  local retries=3
   local API_URL="https://api.github.com/repos/${GITHUB_OWNER}/${REPOSITORY_NAME}/actions/secrets/${secret_name}"
 
-  # Send PUT request to GitHub API
-  local response=$(curl -s -X PUT "$API_URL" \
-    -H "Authorization: Bearer $GH_TOKEN" \
-    -H "Content-Type: application/json" \
-    -H "Accept: application/vnd.github.v3+json" \
-    -d "$(jq -n --arg key_id "$KEY_ID" --arg encrypted_value "$encrypted_value" '{"key_id": $key_id, "encrypted_value": $encrypted_value}')")
+  for i in $(seq 1 $retries); do
+    local encrypted_value=$(encrypt_secret "$secret_value")
 
-  if [[ $(echo "$response" | jq -r '.message') == "null" ]]; then
-    echo "Secret $secret_name successfully pushed to GitHub."
-  else
-    echo "Error pushing secret $secret_name. Response: $response"
-  fi
+    local response=$(curl -s -X PUT "$API_URL" \
+      -H "Authorization: Bearer $GH_TOKEN" \
+      -H "Content-Type: application/json" \
+      -H "Accept: application/vnd.github.v3+json" \
+      -d "$(jq -n --arg key_id "$KEY_ID" --arg encrypted_value "$encrypted_value" '{"key_id": $key_id, "encrypted_value": $encrypted_value}')")
+
+    if [[ $(echo "$response" | jq -r '.message') == "null" ]]; then
+      echo "Secret $secret_name successfully pushed to GitHub."
+      return
+    fi
+
+    echo "Failed to push secret $secret_name (attempt $i/$retries). Retrying..."
+    sleep 5
+  done
+
+  echo "Error: Failed to push secret $secret_name after $retries attempts. Response: $response"
+  exit 1
 }
-
-# ==== Deploy CloudFormation Script ====
-if $DEPLOY_PRE_APPLY; then
-  deploy_cloudformation
-fi
 
 # ==== Generate AWS IAM Access Keys ====
 if $GENERATE_KEY; then
   echo "Generating new AWS IAM access key..."
-  IAM_KEYS=$(aws iam create-access-key --user-name "$IAM_USERNAME" --region "$AWS_REGION" --profile "$AWS_PROFILE")
 
-  if [[ $? -ne 0 ]]; then
-    echo "Error: Failed to create AWS IAM access key using profile '$AWS_PROFILE'."
-    exit 1
+  KEYS=$(aws iam list-access-keys --user-name "$IAM_USERNAME" --query 'AccessKeyMetadata[*].AccessKeyId' --output text --region "$AWS_REGION" --profile "$AWS_PROFILE")
+
+  if [[ $(echo "$KEYS" | wc -w) -ge 2 ]]; then
+    echo "Maximum number of access keys reached. Deleting old keys..."
+    for key in $KEYS; do
+      aws iam delete-access-key --user-name "$IAM_USERNAME" --access-key-id "$key" --region "$AWS_REGION" --profile "$AWS_PROFILE"
+    done
   fi
+
+  IAM_KEYS=$(aws iam create-access-key --user-name "$IAM_USERNAME" --region "$AWS_REGION" --profile "$AWS_PROFILE")
 
   AWS_ACCESS_KEY_ID=$(echo "$IAM_KEYS" | jq -r '.AccessKey.AccessKeyId')
   AWS_SECRET_ACCESS_KEY=$(echo "$IAM_KEYS" | jq -r '.AccessKey.SecretAccessKey')
@@ -200,15 +215,15 @@ fi
 if $UPDATE_SECRETS; then
   echo "Updating GitHub secrets..."
 
+  get_github_repo_public_key
+
   if [[ -z "$AWS_ACCESS_KEY_ID" || -z "$AWS_SECRET_ACCESS_KEY" ]]; then
     echo "Error: AWS access keys are not generated or provided. Generate keys first using --generate-key."
     exit 1
   fi
 
-  # Retrieve the AWS Account ID
   AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text --profile "$AWS_PROFILE")
 
-  # Push secrets to GitHub
   push_github_secret "AWS_ACCESS_KEY_ID" "$AWS_ACCESS_KEY_ID"
   push_github_secret "AWS_SECRET_ACCESS_KEY" "$AWS_SECRET_ACCESS_KEY"
   push_github_secret "AWS_ACCOUNT_ID" "$AWS_ACCOUNT_ID"
