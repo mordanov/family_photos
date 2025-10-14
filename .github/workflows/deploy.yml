@@ -3,94 +3,167 @@ name: Deploy Image Application and Authorization Service
 on:
   push:
     branches:
-      - main  # Trigger workflow on push to the main branch
+      - main
 
 jobs:
   build-and-push:
     name: Build and Push Docker Images
     runs-on: ubuntu-latest
 
+    outputs:
+      auth_digest: ${{ steps.auth_digest.outputs.digest }}
+      image_digest: ${{ steps.image_digest.outputs.digest }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: AWS ECR Login
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
-          username: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        env:
-          AWS_ACCOUNT_IDS: ${{ secrets.AWS_ACCOUNT_ID }}
-
-      - name: Set Repository Tag Prefix
-        run: |
-          if [ -n "${{ secrets.DOCKER_USERNAME }}" ]; then
-            echo "REPO_PREFIX=${{ secrets.DOCKER_USERNAME }}" >> $GITHUB_ENV;
-          elif [ -n "${{ secrets.AWS_ACCOUNT_ID }}" ]; then
-            echo "REPO_PREFIX=${{ secrets.AWS_ACCOUNT_ID }}" >> $GITHUB_ENV;
-          fi
-
       - name: Configure AWS credentials
-        id: creds
         uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Deploy CloudFormation template
-        id: cf_infra
+      - name: AWS ECR Login
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+          username: AWS
+          password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      # Deploy / update infrastructure
+      - name: Deploy CloudFormation infra
         uses: aws-actions/aws-cloudformation-github-deploy@master
         with:
           name: family-photos-infra
           template: aws/cf_infra.yaml
           no-fail-on-empty-changeset: "1"
           parameter-overrides: >-
-            Environment=Development
+            Environment=Production
+        # You can also pass VpcId, PublicSubnet1, PublicSubnet2, SSLCertificateArn here if needed
 
-      - name: Build auth-service Docker image
+      # Build & Push auth-service
+      - name: Build auth-service image
         run: docker build -t auth-service ./auth
 
-      - name: Tag and Push auth-service Docker image
+      - name: Push auth-service image
         run: |
-          docker tag auth-service:latest "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/auth-service:latest";
-          docker push "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/auth-service:latest";
+          docker tag auth-service:latest "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/auth-service:latest"
+          docker push "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/auth-service:latest"
 
-      - name: Build image-app Docker image
+      - name: Get auth-service image digest
+        id: auth_digest
+        run: |
+          DIGEST=$(aws ecr describe-images \
+            --repository-name auth-service \
+            --query 'imageDetails[?imageTags[0]==`latest`].imageDigest' \
+            --output text)
+          echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+
+      # Build & Push image-app
+      - name: Build image-app image
         run: docker build -t image-app ./image
 
-      - name: Tag and Push image-app Docker image
+      - name: Push image-app image
         run: |
-          docker tag image-app:latest "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/image-app:latest";
-          docker push "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/image-app:latest";
+          docker tag image-app:latest "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/image-app:latest"
+          docker push "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/image-app:latest"
+
+      - name: Get image-app image digest
+        id: image_digest
+        run: |
+          DIGEST=$(aws ecr describe-images \
+            --repository-name image-app \
+            --query 'imageDetails[?imageTags[0]==`latest`].imageDigest' \
+            --output text)
+          echo "digest=$DIGEST" >> $GITHUB_OUTPUT
 
   deploy:
-    name: Deploy on Target Server
+    name: Deploy to ECS
     needs: build-and-push
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Copy Docker Compose file to server
-        uses: appleboy/scp-action@v0.1.4
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          key: ${{ secrets.SSH_KEY }}
-          source: docker-compose.yml
-          target: /home/${{ secrets.SSH_USERNAME }}/docker-compose.yml
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: SSH to server and deploy with docker-compose
-        uses: appleboy/ssh-action@v0.1.5
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          key: ${{ secrets.SSH_KEY }}
-          script: |
-            cd /home/${{ secrets.SSH_USERNAME }}
-            docker-compose down
-            docker-compose pull
-            docker-compose up -d
+      - name: Generate ECS task definition JSON
+        run: |
+          AUTH_IMAGE="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/auth-service@${{ needs.build-and-push.outputs.auth_digest }}"
+          IMAGE_APP_IMAGE="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/image-app@${{ needs.build-and-push.outputs.image_digest }}"
+
+          cat > ecs-task-def.json <<EOT
+          {
+            "family": "family-photos-task",
+            "networkMode": "awsvpc",
+            "executionRoleArn": "${{ secrets.AWS_EXECUTION_ROLE_ARN }}",
+            "taskRoleArn": "${{ secrets.AWS_TASK_ROLE_ARN }}",
+            "containerDefinitions": [
+              {
+                "name": "auth-service",
+                "image": "$AUTH_IMAGE",
+                "essential": true,
+                "portMappings": [
+                  { "containerPort": 8080, "protocol": "tcp" }
+                ],
+                "logConfiguration": {
+                  "logDriver": "awslogs",
+                  "options": {
+                    "awslogs-group": "/ecs/auth-service",
+                    "awslogs-region": "${{ secrets.AWS_REGION }}",
+                    "awslogs-stream-prefix": "ecs"
+                  }
+                }
+              },
+              {
+                "name": "image-app",
+                "image": "$IMAGE_APP_IMAGE",
+                "essential": true,
+                "portMappings": [
+                  { "containerPort": 8081, "protocol": "tcp" }
+                ],
+                "logConfiguration": {
+                  "logDriver": "awslogs",
+                  "options": {
+                    "awslogs-group": "/ecs/image-app",
+                    "awslogs-region": "${{ secrets.AWS_REGION }}",
+                    "awslogs-stream-prefix": "ecs"
+                  }
+                }
+              }
+            ],
+            "requiresCompatibilities": ["FARGATE"],
+            "cpu": "512",
+            "memory": "1024"
+          }
+          EOT
+
+      - name: Register new ECS task definition
+        id: register_task
+        run: |
+          TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://ecs-task-def.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+          echo "task_def_arn=$TASK_DEF_ARN" >> $GITHUB_OUTPUT
+
+      - name: Update ECS service - auth-service
+        run: |
+          aws ecs update-service \
+            --cluster ${{ secrets.ECS_CLUSTER_NAME }} \
+            --service auth-service \
+            --task-definition ${{ steps.register_task.outputs.task_def_arn }} \
+            --force-new-deployment
+
+      - name: Update ECS service - image-app
+        run: |
+          aws ecs update-service \
+            --cluster ${{ secrets.ECS_CLUSTER_NAME }} \
+            --service image-app \
+            --task-definition ${{ steps.register_task.outputs.task_def_arn }} \
+            --force-new-deployment
