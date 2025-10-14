@@ -188,9 +188,6 @@ def main():
     if args.profile:
         AWS_PROFILE = args.profile
 
-    if not GH_TOKEN:
-        sys.exit("❌ Error: GitHub token is required (use --gh-token or export GH_SECRET_TOKEN)")
-
     aws_access_key_id = None
     aws_secret_access_key = None
 
@@ -201,6 +198,9 @@ def main():
         aws_access_key_id, aws_secret_access_key = generate_aws_keys()
 
     if args.update_secrets:
+        if not GH_TOKEN:
+            sys.exit("❌ Error: GitHub token is required (use --gh-token or export GH_SECRET_TOKEN)")
+
         if not aws_access_key_id or not aws_secret_access_key:
             sys.exit("❌ Error: AWS access keys required — generate keys first using --generate-key")
 
