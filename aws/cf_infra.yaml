@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: ECS Fargate Infrastructure with ALB Path-Based Routing for Auth and Image Services
+Description: ECS Fargate Infrastructure with ALB Path-Based Routing, fronted by CloudFront
 
 Parameters:
   Environment:
@@ -88,17 +88,13 @@ Resources:
   ALBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Allow HTTP/HTTPS inbound to ALB
+      GroupDescription: Allow HTTP from CloudFront to ALB
       VpcId:
         Fn::ImportValue: family-photos-preapply-VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
           CidrIp: 0.0.0.0/0
 
   ECSSecurityGroup:
@@ -158,7 +154,7 @@ Resources:
       HealthCheckPath: /
 
   ######################################
-  # Listeners
+  # Listener (HTTP only for CloudFront)
   ######################################
   HTTPListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
@@ -167,22 +163,6 @@ Resources:
       Port: 80
       Protocol: HTTP
       DefaultActions:
-        - Type: redirect
-          RedirectConfig:
-            Protocol: HTTPS
-            Port: "443"
-            StatusCode: HTTP_301
-
-  HTTPSListener:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties:
-      LoadBalancerArn: !Ref ApplicationLoadBalancer
-      Port: 443
-      Protocol: HTTPS
-      Certificates:
-        - CertificateArn:
-            Fn::ImportValue: family-photos-preapply-SSLCertificateArn
-      DefaultActions:
         - Type: fixed-response
           FixedResponseConfig:
             StatusCode: 404
@@ -190,12 +170,12 @@ Resources:
             MessageBody: "Not Found"
 
   ######################################
-  # Path-based routing rules (REST style)
+  # Path-based routing rules
   ######################################
-  HTTPSRuleAuth:
+  HTTPRuleAuth:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
     Properties:
-      ListenerArn: !Ref HTTPSListener
+      ListenerArn: !Ref HTTPListener
       Priority: 10
       Actions:
         - Type: forward
@@ -205,10 +185,10 @@ Resources:
           Values:
             - "/api/auth*"
 
-  HTTPSRuleImageApp:
+  HTTPRuleImageApp:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
     Properties:
-      ListenerArn: !Ref HTTPSListener
+      ListenerArn: !Ref HTTPListener
       Priority: 20
       Actions:
         - Type: forward
@@ -261,6 +241,36 @@ Resources:
           ContainerName: image-app
           ContainerPort: 8081
 
+  ######################################
+  # CloudFront Distribution (free *.cloudfront.net domain)
+  ######################################
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Origins:
+          - Id: ALBOrigin
+            DomainName: !GetAtt ApplicationLoadBalancer.DNSName
+            CustomOriginConfig:
+              OriginProtocolPolicy: http-only
+              HTTPPort: 80
+              HTTPSPort: 443
+        DefaultCacheBehavior:
+          TargetOriginId: ALBOrigin
+          ViewerProtocolPolicy: https-only
+          AllowedMethods: ["GET", "HEAD", "OPTIONS", "PUT", "PATCH", "POST", "DELETE"]
+          CachedMethods: ["GET", "HEAD"]
+          ForwardedValues:
+            QueryString: true
+            Cookies:
+              Forward: all
+        PriceClass: PriceClass_100
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+        HttpVersion: http2
+        IsIPV6Enabled: true
+
 Outputs:
   ECSClusterName:
     Description: ECS Cluster Name
@@ -274,3 +284,6 @@ Outputs:
   ALBURL:
     Description: ALB Public DNS Name
     Value: !GetAtt ApplicationLoadBalancer.DNSName
+  CloudFrontDomainName:
+    Description: Free CloudFront domain name (HTTPS ready)
+    Value: !GetAtt CloudFrontDistribution.DomainName

@@ -146,20 +146,6 @@ Resources:
       SubnetId: !Ref PublicSubnet2
       RouteTableId: !Ref PublicRouteTable
 
-  #####################################################
-  # SSL Certificate (ACM) - DNS validation assumed
-  #####################################################
-  SSLCertificate:
-    Type: AWS::ACM::Certificate
-    Properties:
-      DomainName: "example.com"  # CHANGE to your domain
-      ValidationMethod: DNS
-      DomainValidationOptions:
-        - DomainName: "example.com"
-          HostedZoneId: "Z123456789ABCDEFG" # CHANGE: Route 53 hosted zone ID
-      Tags:
-        - Key: Name
-          Value: FamilyPhotosSSLCert
 
 Outputs:
   IAMGroupName:
@@ -181,7 +167,3 @@ Outputs:
   PublicSubnet2:
     Description: "ID of Public Subnet 2"
     Value: !Ref PublicSubnet2
-
-  SSLCertificateArn:
-    Description: "ARN of the created ACM SSL Certificate"
-    Value: !Ref SSLCertificate
