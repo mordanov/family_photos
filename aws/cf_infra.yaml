@@ -1,49 +1,276 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Infrastructure for Family Photos project
+Description: ECS Fargate Infrastructure with ALB Path-Based Routing for Auth and Image Services
 
 Parameters:
   Environment:
     Type: String
-    Description: "The environment (e.g., Production, Staging, Development)"
+    Default: Development
     AllowedValues:
-      - Production
-      - Staging
       - Development
-    Default: Production
+      - Staging
+      - Production
+    Description: Environment name for resource tagging
 
 Resources:
-  AuthServiceECRRepository:
-    Type: "AWS::ECR::Repository"
+  ######################################
+  # ECS Cluster
+  ######################################
+  ECSCluster:
+    Type: AWS::ECS::Cluster
     Properties:
-      RepositoryName: "auth-service"
-      ImageScanningConfiguration:
-        ScanOnPush: true
-      Tags:
-        - Key: "Environment"
-          Value: !Ref Environment
-        - Key: "Application"
-          Value: "AuthService"
+      ClusterName: !Sub "${Environment}-family-photos-cluster"
 
-  ImageAppECRRepository:
-    Type: "AWS::ECR::Repository"
+  ######################################
+  # ECR Repositories
+  ######################################
+  AuthECRRepository:
+    Type: AWS::ECR::Repository
     Properties:
-      RepositoryName: "image-app"
-      ImageScanningConfiguration:
-        ScanOnPush: true
-      Tags:
-        - Key: "Environment"
-          Value: !Ref Environment
-        - Key: "Application"
-          Value: "ImageApp"
+      RepositoryName: auth-service
+      ImageTagMutability: MUTABLE
+
+  ImageECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: image-app
+      ImageTagMutability: MUTABLE
+
+  ######################################
+  # IAM Roles
+  ######################################
+  ECSExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${Environment}-ecsExecutionRole"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${Environment}-ecsTaskRole"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+
+  ######################################
+  # CloudWatch Log Groups
+  ######################################
+  AuthLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: "/ecs/auth-service"
+      RetentionInDays: 14
+
+  ImageAppLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: "/ecs/image-app"
+      RetentionInDays: 14
+
+  ######################################
+  # Security Groups
+  ######################################
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTP/HTTPS inbound to ALB
+      VpcId:
+        Fn::ImportValue: family-photos-preapply-VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow traffic from ALB to ECS tasks
+      VpcId:
+        Fn::ImportValue: family-photos-preapply-VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+        - IpProtocol: tcp
+          FromPort: 8081
+          ToPort: 8081
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+
+  ######################################
+  # Load Balancer
+  ######################################
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub "${Environment}-family-photos-alb"
+      Scheme: internet-facing
+      Subnets:
+        - Fn::ImportValue: family-photos-preapply-PublicSubnet1
+        - Fn::ImportValue: family-photos-preapply-PublicSubnet2
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Type: application
+
+  ######################################
+  # Target Groups
+  ######################################
+  AuthTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub "${Environment}-auth-tg"
+      Port: 8080
+      Protocol: HTTP
+      TargetType: ip
+      VpcId:
+        Fn::ImportValue: family-photos-preapply-VpcId
+      HealthCheckPath: /
+
+  ImageAppTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub "${Environment}-image-tg"
+      Port: 8081
+      Protocol: HTTP
+      TargetType: ip
+      VpcId:
+        Fn::ImportValue: family-photos-preapply-VpcId
+      HealthCheckPath: /
+
+  ######################################
+  # Listeners
+  ######################################
+  HTTPListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Port: "443"
+            StatusCode: HTTP_301
+
+  HTTPSListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn:
+            Fn::ImportValue: family-photos-preapply-SSLCertificateArn
+      DefaultActions:
+        - Type: fixed-response
+          FixedResponseConfig:
+            StatusCode: 404
+            ContentType: text/plain
+            MessageBody: "Not Found"
+
+  ######################################
+  # Path-based routing rules (REST style)
+  ######################################
+  HTTPSRuleAuth:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref HTTPSListener
+      Priority: 10
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref AuthTargetGroup
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - "/api/auth*"
+
+  HTTPSRuleImageApp:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref HTTPSListener
+      Priority: 20
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref ImageAppTargetGroup
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - "/api/image*"
+
+  ######################################
+  # ECS Services (task defs updated via pipeline)
+  ######################################
+  AuthService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: auth-service
+      Cluster: !Ref ECSCluster
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets:
+            - Fn::ImportValue: family-photos-preapply-PublicSubnet1
+            - Fn::ImportValue: family-photos-preapply-PublicSubnet2
+          SecurityGroups:
+            - !Ref ECSSecurityGroup
+      LoadBalancers:
+        - TargetGroupArn: !Ref AuthTargetGroup
+          ContainerName: auth-service
+          ContainerPort: 8080
+
+  ImageAppService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: image-app
+      Cluster: !Ref ECSCluster
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets:
+            - Fn::ImportValue: family-photos-preapply-PublicSubnet1
+            - Fn::ImportValue: family-photos-preapply-PublicSubnet2
+          SecurityGroups:
+            - !Ref ECSSecurityGroup
+      LoadBalancers:
+        - TargetGroupArn: !Ref ImageAppTargetGroup
+          ContainerName: image-app
+          ContainerPort: 8081
 
 Outputs:
-  AuthServiceECRRepositoryURI:
-    Description: "URI of Auth Service"
-    Value: !GetAtt AuthServiceECRRepository.RepositoryUri
-    Export:
-      Name: "AuthServiceECRRepositoryURI"
-  ImageAppECRRepositoryURI:
-    Description: "URI of the Image Service"
-    Value: !GetAtt ImageAppECRRepository.RepositoryUri
-    Export:
-      Name: "ImageAppECRRepositoryURI"
+  ECSClusterName:
+    Description: ECS Cluster Name
+    Value: !Ref ECSCluster
+  ExecutionRoleARN:
+    Description: ECS Execution Role ARN
+    Value: !GetAtt ECSExecutionRole.Arn
+  TaskRoleARN:
+    Description: ECS Task Role ARN
+    Value: !GetAtt ECSTaskRole.Arn
+  ALBURL:
+    Description: ALB Public DNS Name
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
