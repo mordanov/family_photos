@@ -7,13 +7,8 @@ on:
 
 jobs:
   preapply:
-    name: Pre-Apply Stack Outputs
+    name: Ensure Pre-Apply Stack Exists
     runs-on: ubuntu-latest
-    outputs:
-      vpc_id: ${{ steps.get_outputs.outputs.vpc_id }}
-      subnet1: ${{ steps.get_outputs.outputs.subnet1 }}
-      subnet2: ${{ steps.get_outputs.outputs.subnet2 }}
-      ssl_cert: ${{ steps.get_outputs.outputs.ssl_cert }}
 
     steps:
       - name: Configure AWS credentials
@@ -23,37 +18,31 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Get outputs from pre-apply stack
-        id: get_outputs
+      - name: Check if pre-apply stack exists
+        id: check_stack
         run: |
-          VPC_ID=$(aws cloudformation describe-stacks \
-            --stack-name pre-apply-stack \
-            --query "Stacks[0].Outputs[?OutputKey=='VpcId'].OutputValue" \
-            --output text)
-          SUBNET1=$(aws cloudformation describe-stacks \
-            --stack-name pre-apply-stack \
-            --query "Stacks[0].Outputs[?OutputKey=='PublicSubnet1'].OutputValue" \
-            --output text)
-          SUBNET2=$(aws cloudformation describe-stacks \
-            --stack-name pre-apply-stack \
-            --query "Stacks[0].Outputs[?OutputKey=='PublicSubnet2'].OutputValue" \
-            --output text)
-          SSL_CERT=$(aws cloudformation describe-stacks \
-            --stack-name pre-apply-stack \
-            --query "Stacks[0].Outputs[?OutputKey=='SSLCertificateArn'].OutputValue" \
-            --output text)
-          echo "vpc_id=$VPC_ID" >> $GITHUB_OUTPUT
-          echo "subnet1=$SUBNET1" >> $GITHUB_OUTPUT
-          echo "subnet2=$SUBNET2" >> $GITHUB_OUTPUT
-          echo "ssl_cert=$SSL_CERT" >> $GITHUB_OUTPUT
+          if aws cloudformation describe-stacks --stack-name family-photos-preapply >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Deploy pre-apply stack if missing
+        if: steps.check_stack.outputs.exists == 'false'
+        run: |
+          echo "Deploying pre-apply CloudFormation stack..."
+          aws cloudformation deploy \
+            --stack-name family-photos-preapply \
+            --template-file aws/pre-apply.yaml \
+            --capabilities CAPABILITY_NAMED_IAM
 
   build-and-push:
-    name: Build and Push Docker Images
     runs-on: ubuntu-latest
     needs: preapply
     outputs:
       auth_digest: ${{ steps.auth_digest.outputs.digest }}
       image_digest: ${{ steps.image_digest.outputs.digest }}
+      cloudfront_domain: ${{ steps.get_cf_domain.outputs.domain }}
 
     steps:
       - name: Checkout repository
@@ -82,14 +71,23 @@ jobs:
           parameter-overrides: |
             Environment=Production
 
+      - name: Get CloudFront domain from stack outputs
+        id: get_cf_domain
+        run: |
+          DOMAIN=$(aws cloudformation describe-stacks \
+            --stack-name family-photos-infra \
+            --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDomainName'].OutputValue" \
+            --output text)
+          echo "domain=$DOMAIN" >> $GITHUB_OUTPUT
+          echo "🚀 CloudFront HTTPS domain: https://$DOMAIN"
+
+      # Docker build & push auth-service
       - name: Build auth-service image
         run: docker build -t auth-service ./auth
-
-      - name: Push auth-service image
+      - name: Push auth-service
         run: |
           docker tag auth-service:latest "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/auth-service:latest"
           docker push "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/auth-service:latest"
-
       - name: Get auth-service digest
         id: auth_digest
         run: |
@@ -99,14 +97,13 @@ jobs:
             --output text)
           echo "digest=$DIGEST" >> $GITHUB_OUTPUT
 
-      - name: Build image-app image
+      # Docker build & push image-app
+      - name: Build image-app
         run: docker build -t image-app ./image
-
-      - name: Push image-app image
+      - name: Push image-app
         run: |
           docker tag image-app:latest "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/image-app:latest"
           docker push "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/image-app:latest"
-
       - name: Get image-app digest
         id: image_digest
         run: |
@@ -117,7 +114,7 @@ jobs:
           echo "digest=$DIGEST" >> $GITHUB_OUTPUT
 
   deploy:
-    name: Deploy ECS Services
+    name: Update ECS services
     runs-on: ubuntu-latest
     needs: build-and-push
 
@@ -204,3 +201,8 @@ jobs:
             --service image-app \
             --task-definition ${{ steps.register_task.outputs.task_def_arn }} \
             --force-new-deployment
+
+      - name: Show CloudFront HTTPS URL
+        run: |
+          echo "🌍 Your live HTTPS endpoint is:"
+          echo "https://${{ needs.build-and-push.outputs.cloudfront_domain }}"
