@@ -21,7 +21,7 @@ jobs:
       - name: Check if pre-apply stack exists
         id: check_stack
         run: |
-          if aws cloudformation describe-stacks --stack-name family-photos-preapply >/dev/null 2>&1; then
+          if aws cloudformation describe-stacks --stack-name pre-apply-stack >/dev/null 2>&1; then
             echo "exists=true" >> $GITHUB_OUTPUT
           else
             echo "exists=false" >> $GITHUB_OUTPUT
