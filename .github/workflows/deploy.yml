@@ -64,6 +64,22 @@ jobs:
         env:
           AWS_ACCOUNT_IDS: ${{ secrets.AWS_ACCOUNT_ID }}
 
+      - name: Check and delete stack if in ROLLBACK_COMPLETE
+        run: |
+          STATUS=$(aws cloudformation describe-stacks --stack-name family-photos-infra --query "Stacks[0].StackStatus" --output text || echo "NOT_FOUND")
+          if [ "$STATUS" = "ROLLBACK_COMPLETE" ]; then
+            echo "Stack is in ROLLBACK_COMPLETE. Deleting..."
+            aws cloudformation delete-stack --stack-name family-photos-infra
+            # Wait for deletion to complete
+            aws cloudformation wait stack-delete-complete --stack-name family-photos-infra
+          else
+            echo "Stack status is $STATUS. No delete needed."
+          fi
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
       - name: Deploy infra stack
         uses: aws-actions/aws-cloudformation-github-deploy@master
         with:
