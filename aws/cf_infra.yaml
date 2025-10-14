@@ -312,8 +312,8 @@ Resources:
         DefaultCacheBehavior:
           TargetOriginId: ALBOrigin
           ViewerProtocolPolicy: https-only
-          AllowedMethods: ["GET", "HEAD", "OPTIONS", "PUT", "PATCH", "POST", "DELETE"]
-          CachedMethods: ["GET", "HEAD"]
+          AllowedMethods: [ "GET", "HEAD", "OPTIONS", "PUT", "PATCH", "POST", "DELETE" ]
+          CachedMethods: [ "GET", "HEAD" ]
           ForwardedValues:
             QueryString: true
             Cookies:
@@ -322,7 +322,7 @@ Resources:
         ViewerCertificate:
           CloudFrontDefaultCertificate: true
         HttpVersion: http2
-        IsIPV6Enabled: true
+        Ipv6Enabled: true
 
 Outputs:
   ECSClusterName:
