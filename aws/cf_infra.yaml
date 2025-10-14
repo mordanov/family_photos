@@ -199,7 +199,7 @@ Resources:
             - "/api/image*"
 
   ######################################
-  # ECS Task definitions
+  # ECS Task Definitions
   ######################################
   AuthTaskDefinition:
     Type: AWS::ECS::TaskDefinition
@@ -246,10 +246,12 @@ Resources:
               awslogs-stream-prefix: ecs
 
   ######################################
-  # ECS Services (task defs updated via pipeline)
+  # ECS Services (with DependsOn for ListenerRules)
   ######################################
   AuthService:
     Type: AWS::ECS::Service
+    DependsOn:
+      - HTTPRuleAuth
     Properties:
       ServiceName: auth-service
       Cluster: !Ref ECSCluster
@@ -271,6 +273,8 @@ Resources:
 
   ImageAppService:
     Type: AWS::ECS::Service
+    DependsOn:
+      - HTTPRuleImageApp
     Properties:
       ServiceName: image-app
       Cluster: !Ref ECSCluster
