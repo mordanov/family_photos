@@ -33,14 +33,14 @@ Resources:
           # ECR Permissions
           - Effect: "Allow"
             Action:
-              - "ecr:*"        # Authenticate to ECR
-            Resource: "*" # Replace with specific resource ARNs for tighter security
+              - "ecr:*"
+            Resource: "*"
 
           # CloudFormation Permissions
           - Effect: "Allow"
             Action:
-              - "cloudformation:*"       # Create CloudFormation stacks
-            Resource: "*" # Replace with specific resource ARNs for tighter security
+              - "cloudformation:*"
+            Resource: "*"
 
       # Attach the Policy to the Group
       Groups:
