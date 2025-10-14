@@ -39,15 +39,7 @@ Resources:
           # CloudFormation Permissions
           - Effect: "Allow"
             Action:
-              - "cloudformation:CreateStack"       # Create CloudFormation stacks
-              - "cloudformation:DeleteStack"       # Delete CloudFormation stacks
-              - "cloudformation:UpdateStack"       # Update existing stacks
-              - "cloudformation:DescribeStacks"    # View stack status and details
-              - "cloudformation:ListStackResources" # List resources in stacks
-              - "cloudformation:TagResource"       # Tag stacks
-              - "cloudformation:UntagResource"     # Untag stacks
-              - "cloudformation:GetTemplate"       # Retrieve stack templates
-              - "cloudformation:ValidateTemplate"  # Validate CloudFormation templates
+              - "cloudformation:*"       # Create CloudFormation stacks
             Resource: "*" # Replace with specific resource ARNs for tighter security
 
       # Attach the Policy to the Group
