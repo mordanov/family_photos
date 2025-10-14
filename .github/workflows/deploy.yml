@@ -32,7 +32,7 @@ jobs:
         run: |
           echo "Deploying pre-apply CloudFormation stack..."
           aws cloudformation deploy \
-            --stack-name family-photos-preapply \
+            --stack-name pre-apply-stack \
             --template-file aws/pre-apply.yaml \
             --capabilities CAPABILITY_NAMED_IAM
 
