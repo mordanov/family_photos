@@ -33,21 +33,7 @@ Resources:
           # ECR Permissions
           - Effect: "Allow"
             Action:
-              - "ecr:GetAuthorizationToken"        # Authenticate to ECR
-              - "ecr:BatchCheckLayerAvailability"  # Verify Docker layer availability
-              - "ecr:CompleteLayerUpload"          # Complete layer upload
-              - "ecr:UploadLayerPart"              # Upload Docker layers
-              - "ecr:PutImage"                     # Push Docker images
-              - "ecr:ListImages"                   # List images in a repository
-              - "ecr:DescribeRepositories"         # Describe repositories
-              - "ecr:CreateRepository"             # Create new ECR repositories
-              - "ecr:DeleteRepository"             # Delete repositories
-              - "ecr:DeleteRepositoryPolicy"       # Delete repository policies
-              - "ecr:SetRepositoryPolicy"          # Set repository policies
-              - "ecr:GetRepositoryPolicy"          # Get repository policies
-              - "ecr:TagResource"                  # Tag repository resources
-              - "ecr:UntagResource"                # Untag repository resources
-              - "ecr:BatchDeleteImage"             # Delete images
+              - "ecr:*"        # Authenticate to ECR
             Resource: "*" # Replace with specific resource ARNs for tighter security
 
           # CloudFormation Permissions
