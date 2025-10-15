@@ -231,6 +231,38 @@ Resources:
         - Key: Name
           Value: !Sub "${Environment}-postgres-efs"
 
+# Add this to script 1, after PostgresEFS
+
+  PostgresEFSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow NFS access to EFS
+      VpcId:
+        Fn::ImportValue: family-photos-preapply-VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 2049
+          ToPort: 2049
+          SourceSecurityGroupId: !Ref ECSSecurityGroup
+
+  PostgresEFSMountTarget1:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref PostgresEFS
+      SubnetId:
+        Fn::ImportValue: family-photos-preapply-PublicSubnet1
+      SecurityGroups:
+        - !Ref PostgresEFSSecurityGroup
+
+  PostgresEFSMountTarget2:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref PostgresEFS
+      SubnetId:
+        Fn::ImportValue: family-photos-preapply-PublicSubnet2
+      SecurityGroups:
+        - !Ref PostgresEFSSecurityGroup
+
 Outputs:
   ExecutionRoleARN:
     Description: ECS Execution Role ARN
@@ -267,6 +299,12 @@ Outputs:
     Value: !Ref PostgresEFS
     Export:
       Name: family-photos-PostgresEFSId
+
+  PostgresEFSSecurityGroupId:
+    Description: EFS Security Group ID
+    Value: !Ref PostgresEFSSecurityGroup
+    Export:
+      Name: family-photos-PostgresEFSSecurityGroupId
 
   ALBURL:
     Description: ALB Public DNS Name
