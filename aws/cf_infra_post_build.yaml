@@ -208,6 +208,7 @@ Resources:
       DesiredCount: 1
       LaunchType: FARGATE
       TaskDefinition: !Ref ImageAppTaskDefinition
+      HealthCheckGracePeriodSeconds: 120
       NetworkConfiguration:
         AwsvpcConfiguration:
           AssignPublicIp: ENABLED
