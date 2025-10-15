@@ -149,12 +149,18 @@ Resources:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       Name: !Sub "${Environment}-image-tg"
-      Port: 8081
+      Port: 8501
       Protocol: HTTP
       TargetType: ip
       VpcId:
         Fn::ImportValue: family-photos-preapply-VpcId
       HealthCheckPath: /
+      HealthCheckPort: "8501"
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
 
   ######################################
   # Listener (HTTP only for CloudFront)
