@@ -90,6 +90,7 @@ Resources:
       Memory: 1024
       NetworkMode: awsvpc
       RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !ImportValue family-photos-ExecutionRoleARN
       ContainerDefinitions:
         - Name: postgres
           Image: postgres:15
