@@ -53,6 +53,15 @@ Resources:
               awslogs-group: /ecs/auth-service
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: ecs
+          Environment:
+            - Name: POSTGRES_HOST
+              Value: postgres
+            - Name: POSTGRES_USER
+              Value: !Ref PGUser
+            - Name: POSTGRES_PASSWORD
+              Value: !Ref PGPassword
+            - Name: POSTGRES_DB
+              Value: auth_db
 
   ######################################
   # Image App Task Definition

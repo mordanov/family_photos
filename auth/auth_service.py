@@ -1,150 +1,128 @@
 import os
 import psycopg2
 import jwt
+from jwt import ExpiredSignatureError, InvalidTokenError
 import datetime
-from flask import Flask, request, jsonify
-from google.auth.transport.requests import Request
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2 import id_token
+from contextlib import asynccontextmanager
 
-app = Flask(__name__)
-app.config["SECRET_KEY"] = "super-secret-key"
-
-# Get PostgreSQL credentials from environment variables
-POSTGRES_HOST = os.getenv("POSTGRES_HOST", "db-service")  # Default to Docker service name
+# Environment variables
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgres")
 POSTGRES_USER = os.getenv("POSTGRES_USER", "pguser")
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "password")  # Secure value expected
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "password")
 POSTGRES_DB = os.getenv("POSTGRES_DB", "auth_db")
+SECRET_KEY = os.getenv("SECRET_KEY", "super-secret-key")
 
-
-# Utility function: Get a PostgreSQL connection
 def get_db_connection():
-    try:
-        return psycopg2.connect(
-            host=POSTGRES_HOST,
-            database=POSTGRES_DB,
-            user=POSTGRES_USER,
-            password=POSTGRES_PASSWORD
-        )
-    except psycopg2.Error as e:
-        print(f"Error connecting to PostgreSQL: {e}")
-        raise
+    return psycopg2.connect(
+        host=POSTGRES_HOST,
+        database=POSTGRES_DB,
+        user=POSTGRES_USER,
+        password=POSTGRES_PASSWORD
+    )
 
-
-# Initialize PostgreSQL Database
 def init_db():
     try:
-        connection = get_db_connection()
-        cursor = connection.cursor()
-
-        # Create users table if it doesn't exist
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                id SERIAL PRIMARY KEY,
-                email TEXT UNIQUE NOT NULL
-            )
-            """
-        )
-        connection.commit()
-
+        with get_db_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS users (
+                        id SERIAL PRIMARY KEY,
+                        email TEXT UNIQUE NOT NULL
+                    )
+                    """
+                )
+                connection.commit()
         print("Database initialized successfully.")
     except psycopg2.Error as e:
         print(f"Database initialization error: {e}")
-    finally:
-        if connection:
-            cursor.close()
-            connection.close()
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
 
-@app.route("/login", methods=["GET"])
-def login():
-    """Validate Google OAuth Token and issue JWT to authorized users."""
-    token = request.args.get("id_token")
-    if not token:
-        return jsonify({"error": "Missing id_token"}), 400
+app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(  # type: ignore
+    CORSMiddleware,
+    allow_origins=["*"],  # Change to your frontend domain(s) in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+class UserModel(BaseModel):
+    email: str
+
+@app.get("/api/auth/login")
+async def login(id_token_str: str):
+    if not id_token_str:
+        raise HTTPException(status_code=400, detail="Missing id_token")
 
     try:
-        # Validate Google ID token
-        idinfo = id_token.verify_oauth2_token(token, Request())
+        idinfo = id_token.verify_oauth2_token(id_token_str, GoogleRequest())
         email = idinfo["email"]
 
-        # Check if the user is on the authorized list
-        try:
-            connection = get_db_connection()
-            cursor = connection.cursor()
-            cursor.execute("SELECT email FROM users WHERE email = %s", (email,))
-            user = cursor.fetchone()
-        finally:
-            if connection:
-                cursor.close()
-                connection.close()
+        with get_db_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT email FROM users WHERE email = %s", (email,))
+                user = cursor.fetchone()
 
         if not user:
-            return jsonify({"error": "Unauthorized user"}), 403
+            raise HTTPException(status_code=403, detail="Unauthorized user")
 
-        # Generate JWT
         payload = {
             "email": email,
             "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1),
         }
-        token = jwt.encode(payload, app.config["SECRET_KEY"], algorithm="HS256")
+        token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
 
-        return jsonify({"token": token})
+        return {"token": token}
 
     except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+        raise HTTPException(status_code=400, detail=str(e))
+    except psycopg2.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
-
-@app.route("/validate-token", methods=["POST"])
-def validate_token():
-    """Validate a JWT and return its claims."""
+@app.post("/api/auth/validate-token")
+async def validate_token(request: Request):
     auth_header = request.headers.get("Authorization")
     if not auth_header:
-        return jsonify({"error": "Missing Authorization header"}), 400
-
-    token = auth_header.split(" ")[1]
+        raise HTTPException(status_code=400, detail="Missing Authorization header")
 
     try:
-        # Decode the JWT
-        payload = jwt.decode(token, app.config["SECRET_KEY"], algorithms=["HS256"])
-        return jsonify({"email": payload["email"]})
+        parts = auth_header.split(" ")
+        if len(parts) != 2 or parts[0].lower() != "bearer":
+            raise HTTPException(status_code=400, detail="Invalid Authorization header format")
+        token = parts[1]
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        return {"email": payload["email"]}
+    except ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
-    except jwt.ExpiredSignatureError:
-        return jsonify({"error": "Token has expired"}), 401
-
-    except jwt.InvalidTokenError:
-        return jsonify({"error": "Invalid token"}), 401
-
-
-@app.route("/add-user", methods=["POST"])
-def add_user():
-    """Add a user to the authorized list (admin use only)."""
-    data = request.json
-    if "email" not in data:
-        return jsonify({"error": "Missing email field"}), 400
-
-    email = data["email"]
-
+@app.post("/api/auth/add-user")
+async def add_user(user: UserModel):
+    email = user.email
     try:
-        connection = get_db_connection()
-        cursor = connection.cursor()
-        cursor.execute("INSERT INTO users (email) VALUES (%s)", (email,))
-        connection.commit()
-
-        return jsonify({"message": f"User {email} added successfully."})
-
+        with get_db_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("INSERT INTO users (email) VALUES (%s)", (email,))
+                connection.commit()
+        return {"message": f"User {email} added successfully."}
     except psycopg2.IntegrityError:
-        return jsonify({"error": f"User {email} is already authorized."}), 400
-
+        raise HTTPException(status_code=400, detail=f"User {email} is already authorized.")
     except psycopg2.Error as e:
-        return jsonify({"error": str(e)}), 500
-
-    finally:
-        if connection:
-            cursor.close()
-            connection.close()
-
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
+    import uvicorn
     init_db()
-    app.run(host="0.0.0.0", port=5000)
+    uvicorn.run(app, host="0.0.0.0", port=8080)
