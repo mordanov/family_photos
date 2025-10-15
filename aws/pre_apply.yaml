@@ -70,10 +70,15 @@ Resources:
               - "ec2:*"
               - "elasticloadbalancing:*"
             Resource: "*"
-          # CLoudfront Permissions
+          # Cloudfront Permissions
           - Effect: "Allow"
             Action:
               - "cloudfront:*"
+            Resource: "*"
+          # EFS Permissions
+          - Effect: "Allow"
+            Action:
+              - "elasticfilesystem:*"
             Resource: "*"
       Groups:
         - !Ref FamilyPhotosServiceGroup
