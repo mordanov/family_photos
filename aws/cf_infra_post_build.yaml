@@ -20,7 +20,6 @@ Parameters:
     NoEcho: true
     Description: Postgres password
 
-  # Optional: S3 bucket and AWS credentials as parameters (for production, use Secrets Manager/SSM)
   S3BucketName:
     Type: String
     Default: photo-mordanov
@@ -70,7 +69,7 @@ Resources:
               Value: auth_db
 
   ######################################
-  # Image App Task Definition (Streamlit S3 File Manager)
+  # Image App Task Role
   ######################################
   ImageAppTaskRole:
     Type: AWS::IAM::Role
@@ -98,6 +97,9 @@ Resources:
                   - !Sub "arn:aws:s3:::${S3BucketName}"
                   - !Sub "arn:aws:s3:::${S3BucketName}/*"
 
+  ######################################
+  # Image App Task Definition (Streamlit S3 File Manager)
+  ######################################
   ImageAppTaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
