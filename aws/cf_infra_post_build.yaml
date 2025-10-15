@@ -1,0 +1,122 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: ECS Cluster, Task Definitions, and Services
+
+Parameters:
+  Environment:
+    Type: String
+    Default: Development
+    AllowedValues:
+      - Development
+      - Staging
+      - Production
+    Description: Environment name for resource tagging
+
+Resources:
+  ######################################
+  # ECS Cluster
+  ######################################
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub "${Environment}-family-photos-cluster"
+
+  ######################################
+  # ECS Task Definitions
+  ######################################
+  AuthTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: auth-service
+      Cpu: 256
+      Memory: 512
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !ImportValue family-photos-ExecutionRoleARN
+      TaskRoleArn: !ImportValue family-photos-TaskRoleARN
+      ContainerDefinitions:
+        - Name: auth-service
+          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/auth-service:latest"
+          PortMappings:
+            - ContainerPort: 8080
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: /ecs/auth-service
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  ImageAppTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: image-app
+      Cpu: 256
+      Memory: 512
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !ImportValue family-photos-ExecutionRoleARN
+      TaskRoleArn: !ImportValue family-photos-TaskRoleARN
+      ContainerDefinitions:
+        - Name: image-app
+          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/image-app:latest"
+          PortMappings:
+            - ContainerPort: 8081
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: /ecs/image-app
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  ######################################
+  # ECS Services (with DependsOn for ListenerRules)
+  ######################################
+  AuthService:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - HTTPRuleAuth
+    Properties:
+      ServiceName: auth-service
+      Cluster: !Ref ECSCluster
+      DesiredCount: 1
+      LaunchType: FARGATE
+      TaskDefinition: !Ref AuthTaskDefinition
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets:
+            - Fn::ImportValue: family-photos-preapply-PublicSubnet1
+            - Fn::ImportValue: family-photos-preapply-PublicSubnet2
+          SecurityGroups:
+            - !ImportValue family-photos-ECSSecurityGroupId
+      LoadBalancers:
+        - TargetGroupArn: !ImportValue family-photos-AuthTargetGroupArn
+          ContainerName: auth-service
+          ContainerPort: 8080
+
+  ImageAppService:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - HTTPRuleImageApp
+    Properties:
+      ServiceName: image-app
+      Cluster: !Ref ECSCluster
+      DesiredCount: 1
+      LaunchType: FARGATE
+      TaskDefinition: !Ref ImageAppTaskDefinition
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets:
+            - Fn::ImportValue: family-photos-preapply-PublicSubnet1
+            - Fn::ImportValue: family-photos-preapply-PublicSubnet2
+          SecurityGroups:
+            - !ImportValue family-photos-ECSSecurityGroupId
+      LoadBalancers:
+        - TargetGroupArn: !ImportValue family-photos-ImageAppTargetGroupArn
+          ContainerName: image-app
+          ContainerPort: 8081
+
+Outputs:
+  ECSClusterName:
+    Description: ECS Cluster Name
+    Value: !Ref ECSCluster
