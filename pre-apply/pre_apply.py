@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import argparse
 import base64
+import random
+import string
 import sys
 import os
 import time
@@ -165,6 +167,30 @@ def get_aws_account_id():
     session = boto3.Session(profile_name=AWS_PROFILE, region_name=AWS_REGION)
     return session.client("sts").get_caller_identity()["Account"]
 
+def generate_pg_password(length=8):
+    if length < 4:
+        raise ValueError("Password length must be at least 4 to include all character types.")
+
+    letters_upper = string.ascii_uppercase
+    letters_lower = string.ascii_lowercase
+    digits = '123456789'
+    symbols = '!@#$%^&*()-+='
+
+    # Ensure at least one character from each category
+    password = [
+        random.choice(letters_upper),
+        random.choice(letters_lower),
+        random.choice(digits),
+        random.choice(symbols)
+    ]
+
+    # Fill the rest with random choices from all allowed characters
+    all_chars = letters_upper + letters_lower + digits + symbols
+    password += [random.choice(all_chars) for _ in range(length - 4)]
+
+    random.shuffle(password)
+    return ''.join(password)
+
 # ==== Main ====
 def main():
     parser = argparse.ArgumentParser(description="Deploy GitHub secrets and manage AWS resources.")
@@ -207,11 +233,16 @@ def main():
         public_key_b64, key_id = get_github_repo_public_key()
         aws_account_id = get_aws_account_id()
 
+        pg_password = generate_pg_password()
+
         push_github_secret("AWS_ACCESS_KEY_ID", aws_access_key_id, key_id, public_key_b64)
         push_github_secret("AWS_SECRET_ACCESS_KEY", aws_secret_access_key, key_id, public_key_b64)
         push_github_secret("AWS_ACCOUNT_ID", aws_account_id, key_id, public_key_b64)
         push_github_secret("AWS_REGION", AWS_REGION, key_id, public_key_b64)
+        push_github_secret("PG_USER", "pg_user", key_id, public_key_b64)
+        push_github_secret("PG_PASSWORD", pg_password, key_id, public_key_b64)
 
+        print(f"📕 Password for Postgres: `{pg_password}`")
         print("🎉 All secrets pushed to GitHub Actions successfully!")
 
     if not (args.deploy_pre_apply or args.generate_key or args.update_secrets):
