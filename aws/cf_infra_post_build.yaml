@@ -105,6 +105,12 @@ Resources:
           MountPoints:
             - SourceVolume: postgres-data
               ContainerPath: /var/lib/postgresql/data
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: /ecs/postgres
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
       Volumes:
         - Name: postgres-data
           EFSVolumeConfiguration:
