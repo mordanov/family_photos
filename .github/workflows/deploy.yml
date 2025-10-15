@@ -64,7 +64,7 @@ jobs:
         env:
           AWS_ACCOUNT_IDS: ${{ secrets.AWS_ACCOUNT_ID }}
 
-      - name: Check and delete stack if in ROLLBACK_COMPLETE
+      - name: Check and delete family-photos-infra if in ROLLBACK_COMPLETE
         run: |
           STATUS=$(aws cloudformation describe-stacks --stack-name family-photos-infra --query "Stacks[0].StackStatus" --output text || echo "NOT_FOUND")
           if [ "$STATUS" = "ROLLBACK_COMPLETE" ]; then
@@ -80,25 +80,15 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
-      - name: Deploy infra stack
+      - name: Deploy infra stack (before building images)
         uses: aws-actions/aws-cloudformation-github-deploy@master
         with:
           name: family-photos-infra
-          template: aws/cf_infra.yaml
+          template: aws/cf_infra_pre_build.yaml
           no-fail-on-empty-changeset: "1"
           capabilities: CAPABILITY_IAM,CAPABILITY_NAMED_IAM
           parameter-overrides: |
             Environment=Production
-
-      - name: Get CloudFront domain from stack outputs
-        id: get_cf_domain
-        run: |
-          DOMAIN=$(aws cloudformation describe-stacks \
-            --stack-name family-photos-infra \
-            --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDomainName'].OutputValue" \
-            --output text)
-          echo "domain=$DOMAIN" >> $GITHUB_OUTPUT
-          echo "🚀 CloudFront HTTPS domain: https://$DOMAIN"
 
       # Docker build & push auth-service
       - name: Build auth-service image
@@ -131,6 +121,42 @@ jobs:
             --query 'imageDetails[?imageTags[0]==`latest`].imageDigest' \
             --output text)
           echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+
+      - name: Check and delete family-photos-infra-post if in ROLLBACK_COMPLETE
+        run: |
+          STATUS=$(aws cloudformation describe-stacks --stack-name family-photos-infra-post --query "Stacks[0].StackStatus" --output text || echo "NOT_FOUND")
+          if [ "$STATUS" = "ROLLBACK_COMPLETE" ]; then
+            echo "Stack is in ROLLBACK_COMPLETE. Deleting..."
+            aws cloudformation delete-stack --stack-name family-photos-infra-post
+            # Wait for deletion to complete
+            aws cloudformation wait stack-delete-complete --stack-name family-photos-infra-post
+          else
+            echo "Stack status is $STATUS. No delete needed."
+          fi
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Deploy infra stack (after building images)
+        uses: aws-actions/aws-cloudformation-github-deploy@master
+        with:
+          name: family-photos-infra-post
+          template: aws/cf_infra_post_build.yaml
+          no-fail-on-empty-changeset: "1"
+          capabilities: CAPABILITY_IAM,CAPABILITY_NAMED_IAM
+          parameter-overrides: |
+            Environment=Production
+
+      - name: Get CloudFront domain from stack outputs
+        id: get_cf_domain
+        run: |
+          DOMAIN=$(aws cloudformation describe-stacks \
+            --stack-name family-photos-infra \
+            --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDomainName'].OutputValue" \
+            --output text)
+          echo "domain=$DOMAIN" >> $GITHUB_OUTPUT
+          echo "🚀 CloudFront HTTPS domain: https://$DOMAIN"
 
   deploy:
     name: Update ECS services
