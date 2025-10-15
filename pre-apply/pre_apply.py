@@ -239,7 +239,7 @@ def main():
         push_github_secret("AWS_SECRET_ACCESS_KEY", aws_secret_access_key, key_id, public_key_b64)
         push_github_secret("AWS_ACCOUNT_ID", aws_account_id, key_id, public_key_b64)
         push_github_secret("AWS_REGION", AWS_REGION, key_id, public_key_b64)
-        push_github_secret("PG_USER", "pg_user", key_id, public_key_b64)
+        push_github_secret("PG_USER", "family_user", key_id, public_key_b64)
         push_github_secret("PG_PASSWORD", pg_password, key_id, public_key_b64)
 
         print(f"📕 Password for Postgres: `{pg_password}`")
