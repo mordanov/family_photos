@@ -148,7 +148,8 @@ jobs:
           parameter-overrides: |
             Environment=Production,
             PGUser=${{ secrets.PG_USER }},
-            PGPassword=${{ secrets.PG_PASSWORD }}
+            PGPassword=${{ secrets.PG_PASSWORD }},
+            S3BucketName=photo-mordanov
 
       - name: Get CloudFront domain from stack outputs
         id: get_cf_domain
