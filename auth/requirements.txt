@@ -5,3 +5,4 @@ psycopg2-binary==2.9.10
 python-jose==3.3.0
 pydantic==2.7.1
 pyjwt==2.8.0
+requests==2.32.5
