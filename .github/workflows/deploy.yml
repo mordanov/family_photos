@@ -147,8 +147,8 @@ jobs:
           capabilities: CAPABILITY_IAM,CAPABILITY_NAMED_IAM
           parameter-overrides: |
             Environment=Production
-            PGUser= ${{ secrets.PG_USER }}
-            PGPassword= ${{ secrets.PG_PASSWORD }}
+            PGUser=${{ secrets.PG_USER }}
+            PGPassword=${{ secrets.PG_PASSWORD }}
 
       - name: Get CloudFront domain from stack outputs
         id: get_cf_domain
