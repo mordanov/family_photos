@@ -115,8 +115,6 @@ Resources:
   ######################################
   AuthService:
     Type: AWS::ECS::Service
-    DependsOn:
-      - HTTPRuleAuth
     Properties:
       ServiceName: auth-service
       Cluster: !Ref ECSCluster
@@ -141,8 +139,6 @@ Resources:
   ######################################
   ImageAppService:
     Type: AWS::ECS::Service
-    DependsOn:
-      - HTTPRuleImageApp
     Properties:
       ServiceName: image-app
       Cluster: !Ref ECSCluster
