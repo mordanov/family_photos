@@ -146,8 +146,8 @@ jobs:
           no-fail-on-empty-changeset: "1"
           capabilities: CAPABILITY_IAM,CAPABILITY_NAMED_IAM
           parameter-overrides: |
-            Environment=Production
-            PGUser=${{ secrets.PG_USER }}
+            Environment=Production,
+            PGUser=${{ secrets.PG_USER }},
             PGPassword=${{ secrets.PG_PASSWORD }}
 
       - name: Get CloudFront domain from stack outputs
