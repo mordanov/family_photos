@@ -220,6 +220,17 @@ Resources:
         HttpVersion: http2
         IPV6Enabled: true
 
+  ######################################
+  # EFS for Postgres persistent storage
+  ######################################
+  PostgresEFS:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      Encrypted: true
+      FileSystemTags:
+        - Key: Name
+          Value: !Sub "${Environment}-postgres-efs"
+
 Outputs:
   ExecutionRoleARN:
     Description: ECS Execution Role ARN
@@ -250,6 +261,24 @@ Outputs:
     Value: !Ref ImageAppTargetGroup
     Export:
       Name: family-photos-ImageAppTargetGroupArn
+
+  PostgresEFSId:
+    Description: EFS FileSystem for Postgres data
+    Value: !Ref PostgresEFS
+    Export:
+      Name: family-photos-PostgresEFSId
+
+  PublicSubnet1:
+    Description: Public Subnet 1 for ECS tasks
+    Value: { "Fn::ImportValue": "family-photos-preapply-PublicSubnet1" }
+    Export:
+      Name: family-photos-preapply-PublicSubnet1
+
+  PublicSubnet2:
+    Description: Public Subnet 2 for ECS tasks
+    Value: { "Fn::ImportValue": "family-photos-preapply-PublicSubnet2" }
+    Export:
+      Name: family-photos-preapply-PublicSubnet2
 
   ALBURL:
     Description: ALB Public DNS Name

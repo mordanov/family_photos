@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: ECS Cluster, Task Definitions, and Services
+Description: ECS Cluster, Task Definitions, and Services (including Postgres)
 
 Parameters:
   Environment:
@@ -11,6 +11,15 @@ Parameters:
       - Production
     Description: Environment name for resource tagging
 
+  PGUser:
+    Type: String
+    Description: Postgres username
+
+  PGPassword:
+    Type: String
+    NoEcho: true
+    Description: Postgres password
+
 Resources:
   ######################################
   # ECS Cluster
@@ -21,7 +30,7 @@ Resources:
       ClusterName: !Sub "${Environment}-family-photos-cluster"
 
   ######################################
-  # ECS Task Definitions
+  # Auth Task Definition
   ######################################
   AuthTaskDefinition:
     Type: AWS::ECS::TaskDefinition
@@ -45,6 +54,9 @@ Resources:
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: ecs
 
+  ######################################
+  # Image App Task Definition
+  ######################################
   ImageAppTaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
@@ -68,10 +80,43 @@ Resources:
               awslogs-stream-prefix: ecs
 
   ######################################
-  # ECS Services
+  # Postgres Task Definition
+  ######################################
+  PostgresTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: postgres
+      Cpu: 512
+      Memory: 1024
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ContainerDefinitions:
+        - Name: postgres
+          Image: postgres:15
+          PortMappings:
+            - ContainerPort: 5432
+          Environment:
+            - Name: POSTGRES_USER
+              Value: !Ref PGUser
+            - Name: POSTGRES_PASSWORD
+              Value: !Ref PGPassword
+            - Name: POSTGRES_DB
+              Value: auth_db
+          MountPoints:
+            - SourceVolume: postgres-data
+              ContainerPath: /var/lib/postgresql/data
+      Volumes:
+        - Name: postgres-data
+          EFSVolumeConfiguration:
+            FileSystemId: !ImportValue family-photos-PostgresEFSId
+
+  ######################################
+  # Auth ECS Service
   ######################################
   AuthService:
     Type: AWS::ECS::Service
+    DependsOn:
+      - HTTPRuleAuth
     Properties:
       ServiceName: auth-service
       Cluster: !Ref ECSCluster
@@ -91,8 +136,13 @@ Resources:
           ContainerName: auth-service
           ContainerPort: 8080
 
+  ######################################
+  # Image App ECS Service
+  ######################################
   ImageAppService:
     Type: AWS::ECS::Service
+    DependsOn:
+      - HTTPRuleImageApp
     Properties:
       ServiceName: image-app
       Cluster: !Ref ECSCluster
@@ -111,6 +161,27 @@ Resources:
         - TargetGroupArn: !ImportValue family-photos-ImageAppTargetGroupArn
           ContainerName: image-app
           ContainerPort: 8081
+
+  ######################################
+  # Postgres ECS Service
+  ######################################
+  PostgresService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: postgres
+      Cluster: !Ref ECSCluster
+      DesiredCount: 1
+      LaunchType: FARGATE
+      TaskDefinition: !Ref PostgresTaskDefinition
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets:
+            - Fn::ImportValue: family-photos-preapply-PublicSubnet1
+            - Fn::ImportValue: family-photos-preapply-PublicSubnet2
+          SecurityGroups:
+            - !ImportValue family-photos-ECSSecurityGroupId
+      LoadBalancers: []
 
 Outputs:
   ECSClusterName:
