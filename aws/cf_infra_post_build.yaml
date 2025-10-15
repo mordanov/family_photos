@@ -184,6 +184,7 @@ Resources:
       DesiredCount: 1
       LaunchType: FARGATE
       TaskDefinition: !Ref AuthTaskDefinition
+      HealthCheckGracePeriodSeconds: 120
       NetworkConfiguration:
         AwsvpcConfiguration:
           AssignPublicIp: ENABLED
@@ -193,7 +194,7 @@ Resources:
           SecurityGroups:
             - !ImportValue family-photos-ECSSecurityGroupId
       LoadBalancers:
-        - TargetGroupArn: !ImportValue family-photos-AuthTargetGroupArn
+        - TargetGroupArn: !Ref AuthTargetGroup
           ContainerName: auth-service
           ContainerPort: 8080
 
