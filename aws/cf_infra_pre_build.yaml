@@ -144,6 +144,12 @@ Resources:
       VpcId:
         Fn::ImportValue: family-photos-preapply-VpcId
       HealthCheckPath: /
+      HealthCheckPort: "8080"
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
 
   ImageAppTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
