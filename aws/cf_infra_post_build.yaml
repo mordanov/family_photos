@@ -117,6 +117,12 @@ Resources:
           EFSVolumeConfiguration:
             FilesystemId: !ImportValue family-photos-PostgresEFSId
 
+  PostgresLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/postgres
+      RetentionInDays: 7
+
   ######################################
   # Auth ECS Service
   ######################################
