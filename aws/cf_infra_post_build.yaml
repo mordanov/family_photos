@@ -68,12 +68,10 @@ Resources:
               awslogs-stream-prefix: ecs
 
   ######################################
-  # ECS Services (with DependsOn for ListenerRules)
+  # ECS Services
   ######################################
   AuthService:
     Type: AWS::ECS::Service
-    DependsOn:
-      - HTTPRuleAuth
     Properties:
       ServiceName: auth-service
       Cluster: !Ref ECSCluster
