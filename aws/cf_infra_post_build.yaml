@@ -108,7 +108,7 @@ Resources:
       Volumes:
         - Name: postgres-data
           EFSVolumeConfiguration:
-            FileSystemId: !ImportValue family-photos-PostgresEFSId
+            FilesystemId: !ImportValue family-photos-PostgresEFSId
 
   ######################################
   # Auth ECS Service
