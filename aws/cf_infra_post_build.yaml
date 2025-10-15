@@ -95,8 +95,6 @@ Resources:
 
   ImageAppService:
     Type: AWS::ECS::Service
-    DependsOn:
-      - HTTPRuleImageApp
     Properties:
       ServiceName: image-app
       Cluster: !Ref ECSCluster
