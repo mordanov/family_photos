@@ -20,6 +20,12 @@ Parameters:
     NoEcho: true
     Description: Postgres password
 
+  # Optional: S3 bucket and AWS credentials as parameters (for production, use Secrets Manager/SSM)
+  S3BucketName:
+    Type: String
+    Default: photo-mordanov
+    Description: S3 bucket for file manager
+
 Resources:
   ######################################
   # ECS Cluster
@@ -64,8 +70,34 @@ Resources:
               Value: auth_db
 
   ######################################
-  # Image App Task Definition
+  # Image App Task Definition (Streamlit S3 File Manager)
   ######################################
+  ImageAppTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${Environment}-image-app-task-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: S3AccessForImageApp
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource:
+                  - !Sub "arn:aws:s3:::${S3BucketName}"
+                  - !Sub "arn:aws:s3:::${S3BucketName}/*"
+
   ImageAppTaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
@@ -75,18 +107,25 @@ Resources:
       NetworkMode: awsvpc
       RequiresCompatibilities: [FARGATE]
       ExecutionRoleArn: !ImportValue family-photos-ExecutionRoleARN
-      TaskRoleArn: !ImportValue family-photos-TaskRoleARN
+      TaskRoleArn: !GetAtt ImageAppTaskRole.Arn
       ContainerDefinitions:
         - Name: image-app
           Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/image-app:latest"
           PortMappings:
-            - ContainerPort: 8081
+            - ContainerPort: 8501
           LogConfiguration:
             LogDriver: awslogs
             Options:
               awslogs-group: /ecs/image-app
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: ecs
+          Environment:
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: BUCKET_NAME
+              Value: !Ref S3BucketName
+            - Name: AUTH_SERVICE_URL
+              Value: http://auth-service:8080/api/auth/validate-token
 
   ######################################
   # Postgres Task Definition
@@ -178,7 +217,7 @@ Resources:
       LoadBalancers:
         - TargetGroupArn: !ImportValue family-photos-ImageAppTargetGroupArn
           ContainerName: image-app
-          ContainerPort: 8081
+          ContainerPort: 8501  # Streamlit default port
 
   ######################################
   # Postgres ECS Service
@@ -205,3 +244,7 @@ Outputs:
   ECSClusterName:
     Description: ECS Cluster Name
     Value: !Ref ECSCluster
+
+  ImageAppTaskRoleArn:
+    Description: Image App ECS Task Role ARN
+    Value: !GetAtt ImageAppTaskRole.Arn
