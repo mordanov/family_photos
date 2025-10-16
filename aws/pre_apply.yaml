@@ -80,6 +80,11 @@ Resources:
             Action:
               - "elasticfilesystem:*"
             Resource: "*"
+          # EFS Permissions
+          - Effect: "Allow"
+            Action:
+              - "servicediscovery:*"
+            Resource: "*"
       Groups:
         - !Ref FamilyPhotosServiceGroup
 
