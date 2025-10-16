@@ -315,3 +315,9 @@ Outputs:
     Value: !Ref PrivateSubnet2
     Export:
       Name: family-photos-preapply-PrivateSubnet2
+
+  PublicRouteTable:
+    Description: "Route table for public subnets"
+    Value: !Ref PublicRouteTable
+    Export:
+      Name: family-photos-preapply-PublicRouteTable
