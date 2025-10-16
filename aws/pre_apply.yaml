@@ -321,3 +321,18 @@ Outputs:
     Value: !Ref PublicRouteTable
     Export:
       Name: family-photos-preapply-PublicRouteTable
+
+  ECRApiEndpointId:
+    Value: !Ref ECRApiEndpoint
+    Export:
+      Name: family-photos-preapply-ECRApiEndpointId
+
+  ECRDockerEndpointId:
+    Value: !Ref ECRDockerEndpoint
+    Export:
+      Name: family-photos-preapply-ECRDockerEndpointId
+
+  S3GatewayEndpointId:
+    Value: !Ref S3GatewayEndpoint
+    Export:
+      Name: family-photos-preapply-S3GatewayEndpointId

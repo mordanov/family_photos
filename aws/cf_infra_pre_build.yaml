@@ -289,58 +289,6 @@ Resources:
       Vpc:
         Fn::ImportValue: family-photos-preapply-VpcId
 
-  ######################################
-  # VPC Endpoints (Private connectivity for ECS/ECR/Logs/S3)
-  ######################################
-  ECRApiEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      VpcId:
-        Fn::ImportValue: family-photos-preapply-VpcId
-      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ecr.api"
-      VpcEndpointType: Interface
-      PrivateDnsEnabled: true
-      SubnetIds:
-        - Fn::ImportValue: family-photos-preapply-PublicSubnet1
-        - Fn::ImportValue: family-photos-preapply-PublicSubnet2
-      SecurityGroupIds: [ !Ref ECSSecurityGroup ]
-
-  ECRDockerEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      VpcId:
-        Fn::ImportValue: family-photos-preapply-VpcId
-      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ecr.dkr"
-      VpcEndpointType: Interface
-      PrivateDnsEnabled: true
-      SubnetIds:
-        - Fn::ImportValue: family-photos-preapply-PublicSubnet1
-        - Fn::ImportValue: family-photos-preapply-PublicSubnet2
-      SecurityGroupIds: [ !Ref ECSSecurityGroup ]
-
-  LogsEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      VpcId:
-        Fn::ImportValue: family-photos-preapply-VpcId
-      ServiceName: !Sub "com.amazonaws.${AWS::Region}.logs"
-      VpcEndpointType: Interface
-      PrivateDnsEnabled: true
-      SubnetIds:
-        - Fn::ImportValue: family-photos-preapply-PublicSubnet1
-        - Fn::ImportValue: family-photos-preapply-PublicSubnet2
-      SecurityGroupIds: [ !Ref ECSSecurityGroup ]
-
-  S3GatewayEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      VpcId:
-        Fn::ImportValue: family-photos-preapply-VpcId
-      ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
-      RouteTableIds:
-        - Fn::ImportValue: family-photos-preapply-PublicRouteTable
-      VpcEndpointType: Gateway
-
 Outputs:
   ExecutionRoleARN:
     Description: ECS Execution Role ARN
