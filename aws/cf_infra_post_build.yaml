@@ -194,7 +194,7 @@ Resources:
           SecurityGroups:
             - !ImportValue family-photos-ECSSecurityGroupId
       LoadBalancers:
-        - TargetGroupArn: !Ref AuthTargetGroup
+        - TargetGroupArn: !ImportValue family-photos-AuthTargetGroupArn
           ContainerName: auth-service
           ContainerPort: 8080
 
