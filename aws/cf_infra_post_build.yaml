@@ -189,8 +189,8 @@ Resources:
         AwsvpcConfiguration:
           AssignPublicIp: DISABLED
           Subnets:
-            - Fn::ImportValue: family-photos-preapply-PublicSubnet1
-            - Fn::ImportValue: family-photos-preapply-PublicSubnet2
+            - Fn::ImportValue: family-photos-preapply-PrivateSubnet1
+            - Fn::ImportValue: family-photos-preapply-PrivateSubnet2
           SecurityGroups:
             - !ImportValue family-photos-ECSSecurityGroupId
       LoadBalancers:
@@ -229,8 +229,8 @@ Resources:
         AwsvpcConfiguration:
           AssignPublicIp: DISABLED
           Subnets:
-            - Fn::ImportValue: family-photos-preapply-PublicSubnet1
-            - Fn::ImportValue: family-photos-preapply-PublicSubnet2
+            - Fn::ImportValue: family-photos-preapply-PrivateSubnet1
+            - Fn::ImportValue: family-photos-preapply-PrivateSubnet2
           SecurityGroups:
             - !ImportValue family-photos-ECSSecurityGroupId
       LoadBalancers:
@@ -253,8 +253,8 @@ Resources:
         AwsvpcConfiguration:
           AssignPublicIp: DISABLED
           Subnets:
-            - Fn::ImportValue: family-photos-preapply-PublicSubnet1
-            - Fn::ImportValue: family-photos-preapply-PublicSubnet2
+            - Fn::ImportValue: family-photos-preapply-PrivateSubnet1
+            - Fn::ImportValue: family-photos-preapply-PrivateSubnet2
           SecurityGroups:
             - !ImportValue family-photos-ECSSecurityGroupId
       LoadBalancers: []
