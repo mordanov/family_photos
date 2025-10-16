@@ -107,13 +107,17 @@ Resources:
       VpcId:
         Fn::ImportValue: family-photos-preapply-VpcId
       SecurityGroupIngress:
-        - IpProtocol: tcp
+        - IpProtocol: tcp # auth-app
           FromPort: 8080
           ToPort: 8080
           SourceSecurityGroupId: !Ref ALBSecurityGroup
-        - IpProtocol: tcp
+        - IpProtocol: tcp # reserved for statistics web server
           FromPort: 8081
           ToPort: 8081
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+        - IpProtocol: tcp # image-app
+          FromPort: 8501
+          ToPort: 8501
           SourceSecurityGroupId: !Ref ALBSecurityGroup
 
   ######################################
@@ -286,6 +290,14 @@ Resources:
       SecurityGroups:
         - !Ref PostgresEFSSecurityGroup
 
+  ServiceDiscoveryNamespace:
+    Type: AWS::ServiceDiscovery::PrivateDnsNamespace
+    Properties:
+      Name: local
+      Description: Private namespace for ECS services
+      Vpc:
+        Fn::ImportValue: family-photos-preapply-VpcId
+
 Outputs:
   ExecutionRoleARN:
     Description: ECS Execution Role ARN
@@ -336,3 +348,9 @@ Outputs:
   CloudFrontDomainName:
     Description: Free CloudFront domain name (HTTPS ready)
     Value: !GetAtt CloudFrontDistribution.DomainName
+
+  ServiceDiscoveryNamespaceId:
+    Description: Private DNS namespace ID
+    Value: !Ref ServiceDiscoveryNamespace
+    Export:
+      Name: family-photos-ServiceDiscoveryNamespaceId
