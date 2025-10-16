@@ -143,7 +143,7 @@ Resources:
       ExecutionRoleArn: !ImportValue family-photos-ExecutionRoleARN
       ContainerDefinitions:
         - Name: postgres
-          Image: postgres:15
+          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/postgres:15"
           PortMappings:
             - ContainerPort: 5432
           Environment:

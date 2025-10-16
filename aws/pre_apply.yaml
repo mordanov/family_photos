@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Pre-requisites for Family Photos projects (IAM, VPC, Subnets, SSL)
+Description: Pre-requisites for Family Photos project (IAM, VPC, Subnets, Endpoints, SSL)
 
 Resources:
 
@@ -80,16 +80,17 @@ Resources:
             Action:
               - "elasticfilesystem:*"
             Resource: "*"
-          # EFS Permissions
+          # ServiceDiscovery Permissions
           - Effect: "Allow"
             Action:
               - "servicediscovery:*"
+              - "route53:*"
             Resource: "*"
       Groups:
         - !Ref FamilyPhotosServiceGroup
 
   #####################################################
-  # Networking (VPC + Public Subnets)
+  # Networking (VPC + Public & Private Subnets)
   #####################################################
 
   FamilyVpc:
@@ -114,6 +115,10 @@ Resources:
     Properties:
       VpcId: !Ref FamilyVpc
       InternetGatewayId: !Ref InternetGateway
+
+  # -------------------
+  # Public Subnets (for ALB)
+  # -------------------
 
   PublicSubnet1:
     Type: AWS::EC2::Subnet
@@ -162,6 +167,111 @@ Resources:
       SubnetId: !Ref PublicSubnet2
       RouteTableId: !Ref PublicRouteTable
 
+  # -------------------
+  # Private Subnets (for ECS services)
+  # -------------------
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref FamilyVpc
+      CidrBlock: 10.0.3.0/24
+      MapPublicIpOnLaunch: false
+      AvailabilityZone: !Select [ 0, !GetAZs "" ]
+      Tags:
+        - Key: Name
+          Value: FamilyPhotosPrivateSubnet1
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref FamilyVpc
+      CidrBlock: 10.0.4.0/24
+      MapPublicIpOnLaunch: false
+      AvailabilityZone: !Select [ 1, !GetAZs "" ]
+      Tags:
+        - Key: Name
+          Value: FamilyPhotosPrivateSubnet2
+
+  PrivateRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref FamilyVpc
+      Tags:
+        - Key: Name
+          Value: FamilyPhotosPrivateRouteTable1
+
+  PrivateRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref FamilyVpc
+      Tags:
+        - Key: Name
+          Value: FamilyPhotosPrivateRouteTable2
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable1
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable2
+
+  #####################################################
+  # VPC Endpoints for Private ECS Image Pulls (ECR + S3)
+  #####################################################
+
+  DefaultSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Default SG for VPC endpoints
+      VpcId: !Ref FamilyVpc
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      SecurityGroupIngress:
+        - IpProtocol: -1
+          CidrIp: 10.0.0.0/16
+
+  ECRApiEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref FamilyVpc
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ecr.api"
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref DefaultSecurityGroup
+
+  ECRDockerEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref FamilyVpc
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ecr.dkr"
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref DefaultSecurityGroup
+
+  S3GatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref FamilyVpc
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
+      RouteTableIds:
+        - !Ref PrivateRouteTable1
+        - !Ref PrivateRouteTable2
+      VpcEndpointType: Gateway
 
 Outputs:
   IAMGroupName:
@@ -193,3 +303,15 @@ Outputs:
     Value: !Ref PublicSubnet2
     Export:
       Name: family-photos-preapply-PublicSubnet2
+
+  PrivateSubnet1:
+    Description: "ID of Private Subnet 1"
+    Value: !Ref PrivateSubnet1
+    Export:
+      Name: family-photos-preapply-PrivateSubnet1
+
+  PrivateSubnet2:
+    Description: "ID of Private Subnet 2"
+    Value: !Ref PrivateSubnet2
+    Export:
+      Name: family-photos-preapply-PrivateSubnet2
