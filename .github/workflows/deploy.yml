@@ -7,7 +7,7 @@ on:
 
 jobs:
   preapply:
-    name: Ensure Pre-Apply Stack Exists
+    name: check if pre-apply stack exists
     runs-on: ubuntu-latest
 
     steps:
@@ -36,13 +36,10 @@ jobs:
             --template-file aws/pre-apply.yaml \
             --capabilities CAPABILITY_NAMED_IAM
 
-  deployment:
+  deployment-pre-build:
+    name: Deployment - infrastructure for ECS
     runs-on: ubuntu-latest
     needs: preapply
-    outputs:
-      auth_digest: ${{ steps.auth_digest.outputs.digest }}
-      image_digest: ${{ steps.image_digest.outputs.digest }}
-      cloudfront_domain: ${{ steps.get_cf_domain.outputs.domain }}
 
     steps:
       - name: Checkout repository
@@ -54,15 +51,6 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: AWS ECR Login
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
-          username: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        env:
-          AWS_ACCOUNT_IDS: ${{ secrets.AWS_ACCOUNT_ID }}
 
       - name: Check and delete family-photos-infra if in ROLLBACK_COMPLETE
         run: |
@@ -89,6 +77,34 @@ jobs:
           capabilities: CAPABILITY_IAM,CAPABILITY_NAMED_IAM
           parameter-overrides: |
             Environment=Production
+
+  deployment-docker-build:
+    name: Deployment - images
+    runs-on: ubuntu-latest
+    needs: deployment-pre-build
+    outputs:
+      auth_digest: ${{ steps.auth_digest.outputs.digest }}
+      image_digest: ${{ steps.image_digest.outputs.digest }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: AWS ECR Login
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+          username: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        env:
+          AWS_ACCOUNT_IDS: ${{ secrets.AWS_ACCOUNT_ID }}
 
       # Docker build & push auth-service
       - name: Build auth-service image
@@ -122,6 +138,19 @@ jobs:
             --output text)
           echo "digest=$DIGEST" >> $GITHUB_OUTPUT
 
+  deployment-post-build:
+    name: Deployment - frontend infrastructure
+    runs-on: ubuntu-latest
+    needs: deployment-docker-build
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
       - name: Check and delete family-photos-infra-post if in ROLLBACK_COMPLETE
         run: |
           STATUS=$(aws cloudformation describe-stacks --stack-name family-photos-infra-post --query "Stacks[0].StackStatus" --output text || echo "NOT_FOUND")
@@ -154,7 +183,7 @@ jobs:
   finalisation:
     name: DNS name for application
     runs-on: ubuntu-latest
-    needs: deployment
+    needs: deployment-post-build
 
     steps:
       - name: Configure AWS credentials
