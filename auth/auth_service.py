@@ -60,6 +60,10 @@ app.add_middleware(  # type: ignore
 class UserModel(BaseModel):
     email: str
 
+@app.get("/")
+async def healthcheck():
+    return {"status": "ok"}
+
 @app.get("/api/auth/login")
 async def login(id_token_str: str):
     if not id_token_str:
