@@ -338,7 +338,7 @@ Resources:
         Fn::ImportValue: family-photos-preapply-VpcId
       ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
       RouteTableIds:
-        - !Ref PublicRouteTable
+        - Fn::ImportValue: family-photos-preapply-PublicRouteTable
       VpcEndpointType: Gateway
 
 Outputs:
