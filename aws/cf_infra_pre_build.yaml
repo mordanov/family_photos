@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Infrastructure excluding ECS deployments (with ECR + Cloud Map + private connectivity)
+Description: Infrastructure excluding ECS deployments (ECR + Cloud Map + private connectivity)
 
 Parameters:
   Environment:
@@ -103,8 +103,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Allow HTTP from CloudFront to ALB
-      VpcId:
-        Fn::ImportValue: family-photos-preapply-VpcId
+      VpcId: !ImportValue family-photos-preapply-VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
@@ -115,8 +114,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Allow traffic from ALB to ECS tasks
-      VpcId:
-        Fn::ImportValue: family-photos-preapply-VpcId
+      VpcId: !ImportValue family-photos-preapply-VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 8080
@@ -140,8 +138,8 @@ Resources:
       Name: !Sub "${Environment}-family-photos-alb"
       Scheme: internet-facing
       Subnets:
-        - Fn::ImportValue: family-photos-preapply-PublicSubnet1
-        - Fn::ImportValue: family-photos-preapply-PublicSubnet2
+        - !ImportValue family-photos-preapply-PublicSubnet1
+        - !ImportValue family-photos-preapply-PublicSubnet2
       SecurityGroups:
         - !Ref ALBSecurityGroup
       Type: application
@@ -153,8 +151,7 @@ Resources:
       Port: 8080
       Protocol: HTTP
       TargetType: ip
-      VpcId:
-        Fn::ImportValue: family-photos-preapply-VpcId
+      VpcId: !ImportValue family-photos-preapply-VpcId
       HealthCheckPath: /
       HealthCheckPort: "8080"
       HealthCheckProtocol: HTTP
@@ -166,8 +163,7 @@ Resources:
       Port: 8501
       Protocol: HTTP
       TargetType: ip
-      VpcId:
-        Fn::ImportValue: family-photos-preapply-VpcId
+      VpcId: !ImportValue family-photos-preapply-VpcId
       HealthCheckPath: /healthz
       HealthCheckPort: "8501"
       HealthCheckProtocol: HTTP
@@ -254,8 +250,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Allow NFS access to EFS
-      VpcId:
-        Fn::ImportValue: family-photos-preapply-VpcId
+      VpcId: !ImportValue family-photos-preapply-VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 2049
@@ -266,16 +261,14 @@ Resources:
     Type: AWS::EFS::MountTarget
     Properties:
       FileSystemId: !Ref PostgresEFS
-      SubnetId:
-        Fn::ImportValue: family-photos-preapply-PublicSubnet1
+      SubnetId: !ImportValue family-photos-preapply-PrivateSubnet1
       SecurityGroups: [ !Ref PostgresEFSSecurityGroup ]
 
   PostgresEFSMountTarget2:
     Type: AWS::EFS::MountTarget
     Properties:
       FileSystemId: !Ref PostgresEFS
-      SubnetId:
-        Fn::ImportValue: family-photos-preapply-PublicSubnet2
+      SubnetId: !ImportValue family-photos-preapply-PrivateSubnet2
       SecurityGroups: [ !Ref PostgresEFSSecurityGroup ]
 
   ######################################
@@ -286,8 +279,7 @@ Resources:
     Properties:
       Name: local
       Description: Private namespace for ECS services
-      Vpc:
-        Fn::ImportValue: family-photos-preapply-VpcId
+      Vpc: !ImportValue family-photos-preapply-VpcId
 
 Outputs:
   ExecutionRoleARN:
