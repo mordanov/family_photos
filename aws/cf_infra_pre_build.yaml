@@ -160,7 +160,7 @@ Resources:
       TargetType: ip
       VpcId:
         Fn::ImportValue: family-photos-preapply-VpcId
-      HealthCheckPath: /
+      HealthCheckPath: /healthz
       HealthCheckPort: "8501"
       HealthCheckProtocol: HTTP
       HealthCheckIntervalSeconds: 30
