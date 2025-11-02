@@ -24,7 +24,7 @@ Resources:
   ImageECRRepository:
     Type: AWS::ECR::Repository
     Properties:
-      RepositoryName: image-app
+      RepositoryName: s3-api-app
       ImageTagMutability: MUTABLE
 
   ######################################
@@ -93,7 +93,7 @@ Resources:
   ImageAppLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: "/ecs/image-app"
+      LogGroupName: "/ecs/s3-api-app"
       RetentionInDays: 14
 
   ######################################
@@ -159,7 +159,7 @@ Resources:
   ImageAppTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: !Sub "${Environment}-image-tg"
+      Name: !Sub "${Environment}-s3-api-tg"
       Port: 8501
       Protocol: HTTP
       TargetType: ip
@@ -191,7 +191,7 @@ Resources:
           TargetGroupArn: !Ref AuthTargetGroup
       Conditions:
         - Field: path-pattern
-          Values: [ "/api/auth*" ]
+          Values: [ "/db-api/auth*" ]
 
   HTTPRuleImageApp:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
@@ -203,7 +203,7 @@ Resources:
           TargetGroupArn: !Ref ImageAppTargetGroup
       Conditions:
         - Field: path-pattern
-          Values: [ "/api/image*" ]
+          Values: [ "/db-api/s3-api*" ]
 
   ######################################
   # CloudFront

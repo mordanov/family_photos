@@ -269,7 +269,7 @@ Resources:
     Type: AWS::EC2::VPCEndpoint
     Properties:
       VpcId: !Ref FamilyVpc
-      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ecr.api"
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ecr.db-api"
       VpcEndpointType: Interface
       PrivateDnsEnabled: true
       SubnetIds:

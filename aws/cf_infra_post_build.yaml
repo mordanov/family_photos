@@ -74,7 +74,7 @@ Resources:
   ImageAppTaskRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "${Environment}-image-app-task-role"
+      RoleName: !Sub "${Environment}-s3-api-app-task-role"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -103,7 +103,7 @@ Resources:
   ImageAppTaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
-      Family: image-app
+      Family: s3-api-app
       Cpu: 256
       Memory: 512
       NetworkMode: awsvpc
@@ -111,14 +111,14 @@ Resources:
       ExecutionRoleArn: !ImportValue family-photos-ExecutionRoleARN
       TaskRoleArn: !GetAtt ImageAppTaskRole.Arn
       ContainerDefinitions:
-        - Name: image-app
-          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/image-app:latest"
+        - Name: s3-api-app
+          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/s3-api-app:latest"
           PortMappings:
             - ContainerPort: 8501
           LogConfiguration:
             LogDriver: awslogs
             Options:
-              awslogs-group: /ecs/image-app
+              awslogs-group: /ecs/s3-api-app
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: ecs
           Environment:
@@ -219,7 +219,7 @@ Resources:
   ImageAppService:
     Type: AWS::ECS::Service
     Properties:
-      ServiceName: image-app
+      ServiceName: s3-api-app
       Cluster: !Ref ECSCluster
       DesiredCount: 1
       LaunchType: FARGATE
@@ -235,7 +235,7 @@ Resources:
             - !ImportValue family-photos-ECSSecurityGroupId
       LoadBalancers:
         - TargetGroupArn: !ImportValue family-photos-ImageAppTargetGroupArn
-          ContainerName: image-app
+          ContainerName: s3-api-app
           ContainerPort: 8501  # Streamlit default port
 
   ######################################
@@ -263,7 +263,3 @@ Outputs:
   ECSClusterName:
     Description: ECS Cluster Name
     Value: !Ref ECSCluster
-
-  ImageAppTaskRoleArn:
-    Description: Image App ECS Task Role ARN
-    Value: !GetAtt ImageAppTaskRole.Arn

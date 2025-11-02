@@ -1,34 +1,35 @@
 version: "3.8"
 
 services:
-  auth-service:
+  frontend:
     build:
-      context: ./auth
+      context: ./frontend
     ports:
-      - "5000:5000"
-    volumes:
-      - auth-db:/data
+      - "8501:8501"
+    depends_on:
+      - db-service
+      - backend-s3-api
+      - backend-db-api
+
+  backend-s3-api:
+    build:
+      context: ./backend/s3-api
+    ports:
+      - "8080:8080"
     environment:
-      - FLASK_ENV=development
-      - POSTGRES_PASSWORD=${PG_PASSWORD}
-      - POSTGRES_HOST=db-service
-      - POSTGRES_DB=auth_db
+      AWS_REGION: us-east-1
     depends_on:
       - db-service
 
-  image-app:
+  backend-db-api:
     build:
-      context: ./image
+      context: ./backend/db-api
     ports:
-      - "8501:8501"
+      - "8081:8081"
     environment:
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AUTH_SERVICE_URL=http://auth-service:5000
-      - POSTGRES_USER=${PG_USER}
-      - POSTGRES_PASSWORD=${PG_PASSWORD}
-      - POSTGRES_HOST=db-service
-      - POSTGRES_DB=auth_db
+      POSTGRES_USER: ${PG_USER}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_DB: auth_db
     depends_on:
       - db-service
 
@@ -45,5 +46,4 @@ services:
       - postgres-data:/var/lib/postgresql/data
 
 volumes:
-  auth-db:
   postgres-data:
