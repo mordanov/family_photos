@@ -152,10 +152,10 @@ This workflow automates the deployment of an image application and its authoriza
 ---
 
 #### **Deleting**
-- **Stack Deletion (manual or scripted):**
+- **Stack Deletion:**
   - `aws cloudformation delete-stack --stack-name <name>`
   - `aws cloudformation wait stack-delete-complete --stack-name <name>`
-- **Image Deletion (manual):**
+- **Image Deletion:**
   - Use AWS Console or CLI: `aws ecr batch-delete-image ...`
 
 ---
