@@ -5,7 +5,7 @@ services:
     build:
       context: ./auth
     ports:
-      - "5000:5000"
+      - "8080:8080"
     volumes:
       - auth-db:/data
     environment:
@@ -24,7 +24,7 @@ services:
     environment:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AUTH_SERVICE_URL=http://auth-service:5000
+      - AUTH_SERVICE_URL=http://auth-service:8080
       - POSTGRES_USER=${PG_USER}
       - POSTGRES_PASSWORD=${PG_PASSWORD}
       - POSTGRES_HOST=db-service
